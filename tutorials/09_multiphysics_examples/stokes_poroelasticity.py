@@ -27,9 +27,9 @@ from Layton, Schieweck, Yotov, Coupling fluid flow with
 defined on the interface
 
 uS: Stokes velocity in H^1(OmS)
-uD: Darcy velocity in H(div,OmD)
+uP: Poroelastic displacement in H^1(OmP)
 pS: Stokes pressure in L^2(OmS)
-pD: Darcy pressure in L^2(OmD)
+pP: Poroelastic pressure in L^2(OmP)
 
 transmission conditions:
 
@@ -42,25 +42,34 @@ parameters["ghost_mode"] = "shared_facet"  # required by dS
 
 # ********* Model constants  ******* #
 
-def epsilon(vec):
-    return sym(grad(vec))
-
+G = Constant(1.)
+l = Constant(1.)
+k = 1.
+Kval = Constant(k)
+KvalCorr = Constant(max(k, 1.))
 mu = Constant(1.)
 alpha = Constant(1.)
-k = Constant(1.)
 fS = Constant((0., 0.))
-fD = fS
+fP = fS
 gS = Constant(0.)
-gD = gS
+gP = gS
+
+# ********* Numerical method constants  ******* #
+
+deg = 2
+degP = 1
+etaU = 10
+eta = 10
+tau = 1
 
 # ******* Construct mesh and define normal, tangent ****** #
-darcy = 10
+poroel = 10
 stokes = 13
 outlet = 14
 inlet = 15
 interf = 16
 wallS = 17
-wallD = 18
+wallP = 18
 
 # ******* Set subdomains, boundaries, and interface ****** #
 
@@ -82,11 +91,11 @@ class SLeft(SubDomain):
     def inside(self, x, on_boundary):
         return (near(x[0], -1.0) and between(x[1], (0.0, 2.0)) and on_boundary)
 
-class DRight(SubDomain):
+class PRight(SubDomain):
     def inside(self, x, on_boundary):
         return (near(x[0], 1.0) and between(x[1], (-2.0, 0.0)) and on_boundary)
 
-class DLeft(SubDomain):
+class PLeft(SubDomain):
     def inside(self, x, on_boundary):
         return (near(x[0], -1.0) and between(x[1], (-2.0, 0.0)) and on_boundary)
 
@@ -98,7 +107,7 @@ class MStokes(SubDomain):
     def inside(self, x, on_boundary):
         return x[1] >= 0.
 
-class MDarcy(SubDomain):
+class MPoroel(SubDomain):
     def inside(self, x, on_boundary):
         return x[1] <= 0.
 
@@ -111,15 +120,15 @@ def tensor_jump(u, n):
 def tensor_jump_b(u, n):
     return  outer(u, n)/2 + outer(n, u)/2
 
-MDarcy().mark(subdomains, darcy)
+MPoroel().mark(subdomains, poroel)
 MStokes().mark(subdomains, stokes)
 Interface().mark(boundaries, interf)
 
 Top().mark(boundaries, inlet)
 SRight().mark(boundaries, wallS)
 SLeft().mark(boundaries, wallS)
-DRight().mark(boundaries, wallD)
-DLeft().mark(boundaries, wallD)
+PRight().mark(boundaries, wallP)
+PLeft().mark(boundaries, wallP)
 Bot().mark(boundaries, outlet)
 
 
@@ -129,7 +138,7 @@ t = as_vector((-n[1], n[0]))
 # ******* Set subdomains, boundaries, and interface ****** #
 
 OmS = MeshRestriction(mesh, MStokes())
-OmD = MeshRestriction(mesh, MDarcy())
+OmP = MeshRestriction(mesh, MPoroel())
 Sig = MeshRestriction(mesh, Interface())
 
 dx = Measure("dx", domain=mesh, subdomain_data=subdomains)
@@ -137,20 +146,20 @@ ds = Measure("ds", domain=mesh, subdomain_data=boundaries)
 dS = Measure("dS", domain=mesh, subdomain_data=boundaries)
 
 # verifying the domain size
-areaD = assemble(1.*dx(darcy))
+areaP = assemble(1.*dx(poroel))
 areaS = assemble(1.*dx(stokes))
 lengthI = assemble(1.*dS(interf))
-print("area(Omega_D) = ", areaD)
+print("area(Omega_P) = ", areaP)
 print("area(Omega_S) = ", areaS)
 print("length(Sigma) = ", lengthI)
 
 # ***** Global FE spaces and their restrictions ****** #
 
-P2v = VectorFunctionSpace(mesh, "DG", 2)
-P1 = FunctionSpace(mesh, "DG", 1)
-BDM1 = VectorFunctionSpace(mesh, "DG", 2)
-P0 = FunctionSpace(mesh, "DG", 1)
-Pt = FunctionSpace(mesh, "DGT", 1)
+P2v = VectorFunctionSpace(mesh, "DG", deg)
+P1 = FunctionSpace(mesh, "DG", degP)
+BDM1 = VectorFunctionSpace(mesh, "DG", deg)
+P0 = FunctionSpace(mesh, "DG", degP)
+Pt = FunctionSpace(mesh, "DGT", degP)
 
 # the space for uD can be RT or BDM
 # the space for lambda should be DGT, but then it cannot be
@@ -159,14 +168,14 @@ Pt = FunctionSpace(mesh, "DGT", 1)
 #     that the interface extends to the neighbouring element in OmegaD
 
 
-#                         uS,   uD, pS, pD, la
+#                         uS,   uP, pS, pP, la
 Hh = BlockFunctionSpace([P2v, BDM1, P1, P0, Pt],
-                        restrict=[OmS, OmD, OmS, OmD, Sig])
+                        restrict=[OmS, OmP, OmS, OmP, Sig])
 
 trial = BlockTrialFunction(Hh)
-uS, uD, pS, pD, la = block_split(trial)
+uS, uP, pS, pP, la = block_split(trial)
 test = BlockTestFunction(Hh)
-vS, vD, qS, qD, xi = block_split(test)
+vS, vP, qS, qP, xi = block_split(test)
 
 print("DoFs = ", Hh.dim(), " -- DoFs with unified Taylor-Hood = ", P2v.dim() + P1.dim())
 
@@ -178,23 +187,16 @@ noSlip = Constant((0., 0.))
 fakeSlip = Constant((0., 0.))
 pOut = Constant(0.0)
 
-# bcUin = DirichletBC(Hh.sub(0), inflow, boundaries, inlet)
-# bcUS = DirichletBC(Hh.sub(0), noSlip, boundaries, wallS)
-bcUD = DirichletBC(Hh.sub(1), noSlip, boundaries, wallD)
-
-bcs = BlockDirichletBC([bcUD])
+# no BCs: imposed by DG
 
 # ********  Define weak forms ********** #
 
 h = CellDiameter(mesh)
 h_avg = (2*h('+')*h('-'))/(h('+')+h('-'))
 n = FacetNormal(mesh)
-deg = 2
-degP = 1
-etaU = 10
-eta = 10
+h_avg_S = (h('+')+h('-')-abs(h('+')-h('-')))/2
 
-AS = 2.0 * mu * inner(epsilon(uS), epsilon(vS)) * dx(stokes) \
+AS = 2.0 * mu * inner(sym(grad(uS)), sym(grad(vS))) * dx(stokes) \
      + (mu*etaU*deg*deg/h_avg*inner(tensor_jump(uS,n),tensor_jump(vS,n))*dS(0)) \
      - (2*mu*inner(avg(sym(grad(uS))), tensor_jump(vS,n))*dS(0)) - (2*mu*inner(avg(sym(grad(vS))), tensor_jump(uS,n))*dS(0)) \
      + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS,n), tensor_jump_b(vS,n))*ds(inlet)) \
@@ -205,51 +207,45 @@ AS = 2.0 * mu * inner(epsilon(uS), epsilon(vS)) * dx(stokes) \
      - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS,n))*ds(wallS))
 
 B1St = - pS * div(vS) * dx(stokes) \
-       + jump(vS,n) * avg(pS) * dS(0)
+       + jump(vS,n) * avg(pS) * dS(0) \
+       + inner(vS,n) * pS * ds(inlet) \
+       + inner(vS,n) * pS * ds(wallS)
 
 B1S = qS * div(uS) * dx(stokes) \
        - jump(uS,n) * avg(qS) * dS(0) \
        - inner(uS,n) * qS * ds(inlet) \
        - inner(uS,n) * qS * ds(wallS)
 
-h_avg_S = (h('+')+h('-')-abs(h('+')-h('-')))/2
-SS = eta*h_avg_S/degP * dot(jump(pS,n), jump(qS,n)) * dS(0)
+SS = eta*h_avg_S/degP * inner(jump(pS,n), jump(qS,n)) * dS(0)
 
-G = 1
-l = 1
-Kval = 1
-KvalCorr = max(Kval, 1)
-tau = 1
-alpha = 1
+AP = (2*G*inner(sym(grad(uP)),sym(grad(vP)))*dx(poroel)) + (l*div(uP)*div(vP)*dx(poroel)) \
+     + ((2*l+5*G)*etaU*deg*deg/h_avg*inner(tensor_jump(uP,n),tensor_jump(vP,n))*dS(0)) \
+     - (2*G*inner(avg(sym(grad(uP))), tensor_jump(vP,n))*dS(0)) - (2*G*inner(avg(sym(grad(vP))), tensor_jump(uP,n))*dS(0)) \
+     - (l*avg(div(uP))*jump(vP,n)*dS(0)) - (l*avg(div(vP))*jump(uP,n)*dS(0)) \
+     + ((2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(uP,n), tensor_jump_b(vP,n))*ds(wallP)) \
+     - (2*G*inner(sym(grad(uP)), tensor_jump_b(vP,n)) * ds(wallP)) \
+     - (2*G*inner(sym(grad(vP)), tensor_jump_b(uP,n)) * ds(wallP)) \
+     - (l*div(uP)*inner(vP,n)*ds(wallP)) - (l*div(vP)*inner(uP,n)*ds(wallP))
 
-AD = (2*G*inner(sym(grad(uD)),sym(grad(vD)))*dx(darcy)) + (l*div(uD)*div(vD)*dx(darcy)) \
-     + ((2*l+5*G)*etaU*deg*deg/h_avg*inner(tensor_jump(uD,n),tensor_jump(vD,n))*dS(0)) \
-     - (2*G*inner(avg(sym(grad(uD))), tensor_jump(vD,n))*dS(0)) - (2*G*inner(avg(sym(grad(vD))), tensor_jump(uD,n))*dS(0)) \
-     - (l*avg(div(uD))*jump(vD,n)*dS(0)) - (l*avg(div(vD))*jump(uD,n)*dS(0)) \
-     + ((2*l+5*G)*etaU*deg*deg/h*inner((outer(uD,n) + outer(n,uD))/2, (outer(vD,n) + outer(n,vD))/2)*ds(wallD)) \
-     - (2*G*inner(sym(grad(uD)), (outer(vD,n) + outer(n,vD))/2)*ds(wallD)) \
-     - (2*G*inner(sym(grad(vD)), (outer(uD,n) + outer(n,uD))/2)*ds(wallD)) \
-     - (l*div(uD)*dot(vD,n)*ds(wallD)) - (l*div(vD)*dot(uD,n)*ds(wallD))
+SP = (Kval/G*inner(grad(pP),grad(qP))*dx(poroel)) \
+     + (KvalCorr*eta*degP*degP/h_avg_S*inner(jump(pP,n),jump(qP,n))*dS(0)) \
+     - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
+     - (Kval/G*inner(grad(pP),n)*qP*ds(outlet)) - (Kval/G*inner(grad(qP),n)*pP*ds(outlet)) \
+     + (KvalCorr*eta*degP*degP/h*pP*qP*ds(outlet))
 
-SD = (Kval*dot(grad(pD),grad(qD))*dx(darcy)) \
-     + (KvalCorr*eta*degP*degP/h_avg_S*dot(jump(pD,n),jump(qD,n))*dS(0)) \
-     - (Kval*dot(avg(grad(pD)),jump(qD,n))*dS(0)) - (Kval*dot(avg(grad(qD)),jump(pD,n))*dS(0)) \
-     - (Kval*inner(grad(pD),n)*qD*ds(outlet)) - (Kval*inner(grad(qD),n)*pD*ds(outlet)) \
-     + (KvalCorr*eta*degP*degP/h*pD*qD*ds(outlet))
+JSt = - avg(qP) * jump(uS, n) * dS(interf)
+JS = avg(pP) * jump(vS, n) * dS(interf)
+JP = avg(qP) * jump(uP, n) * dS(interf)
+JPt = avg(pP) * jump(vP, n) * dS(interf)
 
-JSt = - avg(qD) * jump(uS, n) * dS(interf)
-JS = avg(pD) * jump(vS, n) * dS(interf)
-JDt = avg(qD) * jump(uD, n) * dS(interf)
-JD = avg(pD) * jump(vD, n) * dS(interf)
+B1P = qP * div(uP) * dx(poroel) \
+      - alpha * jump(uP,n) * avg(qP) * dS(0) \
+      - alpha * inner(uP,n) * qP * ds(wallP) \
+      + JP
 
-B1Dt = qD * div(uD) * dx(darcy) \
-      - alpha * jump(uD,n) * avg(qD) * dS(0) \
-      - alpha * inner(uD,n) * qD * ds(wallD) \
-      + JDt
-
-B1D = - alpha * pD * div(vD) * dx(darcy) \
-       + alpha * jump(vD,n) * avg(pD) * dS(0) \
-       + JD
+B1Pt = - alpha * pP * div(vP) * dx(poroel) \
+       + alpha * jump(vP,n) * avg(pP) * dS(0) \
+       + JPt
 
 FuS = dot(fS, vS) * dx(stokes) \
       + (mu*etaU*deg*deg/h*inner(tensor_jump_b(inflow,n),tensor_jump_b(vS,n))*ds(inlet)) \
@@ -257,29 +253,29 @@ FuS = dot(fS, vS) * dx(stokes) \
       + (mu*etaU*deg*deg/h*inner(tensor_jump_b(noSlip,n),tensor_jump_b(vS,n))*ds(wallS)) \
       - (2*mu*inner(sym(grad(vS)), tensor_jump_b(noSlip,n))*ds(wallS))
 
-FuD = dot(fD, vD) * dx(darcy) \
-      + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(fakeSlip,n),tensor_jump_b(vD,n))*ds(wallD) \
-      - 2*G*inner(sym(grad(vD)), tensor_jump_b(fakeSlip,n))*ds(wallD) \
-      - l*div(vD)*dot(fakeSlip,n)*ds(wallD)
+FuP = dot(fP, vP) * dx(poroel) \
+      + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(fakeSlip,n),tensor_jump_b(vP,n))*ds(wallP) \
+      - 2*G*inner(sym(grad(vP)), tensor_jump_b(fakeSlip,n))*ds(wallP) \
+      - l*div(vP)*dot(fakeSlip,n)*ds(wallP)
 
 GqS = gS*qS * dx(stokes) \
       - inner(inflow,n) * qS * ds(inlet) \
       - inner(noSlip,n) * qS * ds(wallS)
 
-GqD = - gD*qD * dx(darcy) \
-      - alpha * inner(fakeSlip,n) * qD * ds(wallD) \
-      + (KvalCorr*eta*degP*degP/h*pOut*qD*ds(outlet))
+GqP = - gP*qP * dx(poroel) \
+      - alpha * inner(fakeSlip,n) * qP * ds(wallP) \
+      + (KvalCorr*eta*degP*degP/h*pOut*qP*ds(outlet))
 
 # ****** Assembly and solution of linear system ******** #
 
-rhs = [FuS, FuD, GqS, GqD, 0]
+rhs = [FuS, FuP, GqS, GqP, 0]
 
 # this can be ordered arbitrarily. I've chosen
-#        uS   uD   pS   pD  la
+#        uS   uP   pS   pP  la
 lhs = [[ AS,   0, B1St,  JSt,    0],
-       [  0,  AD,    0, B1Dt,    0],
+       [  0,  AP,    0, B1Pt,    0],
        [B1S,   0,   SS,    0,    0],
-       [ JS, B1D,    0,   SD,    0],
+       [ JS, B1P,    0,   SP,    0],
        [  0,   0,    0,    0,   SS]]
 
 AA = block_assemble(lhs)
@@ -288,27 +284,27 @@ FF = block_assemble(rhs)
 # bcs.apply(FF)
 
 sol = BlockFunction(Hh)
-block_solve(AA, sol.block_vector(), FF, "mumps")
-uS_h, uD_h, pS_h, pD_h, la_h = block_split(sol)
+block_solve(AA, sol.block_vector(), FF)#, "mumps")
+uS_h, uP_h, pS_h, pP_h, la_h = block_split(sol)
 # assert isclose(uS_h.vector().norm("l2"), 73.54915)
-# assert isclose(uD_h.vector().norm("l2"), 2.713143)
+# assert isclose(uP_h.vector().norm("l2"), 2.713143)
 # assert isclose(pS_h.vector().norm("l2"), 175.4097)
-# assert isclose(pD_h.vector().norm("l2"), 54.45552)
+# assert isclose(pP_h.vector().norm("l2"), 54.45552)
 print(uS_h.vector().norm("l2"), 73.54915)
-print(uD_h.vector().norm("l2"), 2.713143)
+print(uP_h.vector().norm("l2"), 2.713143)
 print(pS_h.vector().norm("l2"), 175.4097)
-print(pD_h.vector().norm("l2"), 54.45552)
+print(pP_h.vector().norm("l2"), 54.45552)
 
 # ****** Saving data ******** #
 uS_h.rename("uS", "uS")
 pS_h.rename("pS", "pS")
-uD_h.rename("uD", "uD")
-pD_h.rename("pD", "pD")
+uP_h.rename("uP", "uP")
+pP_h.rename("pP", "pP")
 
 output = XDMFFile("stokes_poroelasticity.xdmf")
 output.parameters["rewrite_function_mesh"] = False
 output.parameters["functions_share_mesh"] = True
 output.write(uS_h, 0.0)
 output.write(pS_h, 0.0)
-output.write(uD_h, 0.0)
-output.write(pD_h, 0.0)
+output.write(uP_h, 0.0)
+output.write(pP_h, 0.0)
