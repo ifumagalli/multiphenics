@@ -148,8 +148,8 @@ print("length(Sigma) = ", lengthI)
 
 P2v = VectorFunctionSpace(mesh, "DG", 2)
 P1 = FunctionSpace(mesh, "DG", 1)
-BDM1 = FunctionSpace(mesh, "BDM", 1)
-P0 = FunctionSpace(mesh, "DG", 0)
+BDM1 = VectorFunctionSpace(mesh, "DG", 2)
+P0 = FunctionSpace(mesh, "DG", 1)
 Pt = FunctionSpace(mesh, "DGT", 1)
 
 # the space for uD can be RT or BDM
@@ -175,6 +175,8 @@ print("DoFs = ", Hh.dim(), " -- DoFs with unified Taylor-Hood = ", P2v.dim() + P
 
 inflow = Expression(("0.0", "pow(x[0], 2)-1.0"), degree=2)
 noSlip = Constant((0., 0.))
+fakeSlip = Constant((0., 0.))
+pOut = Constant(0.0)
 
 # bcUin = DirichletBC(Hh.sub(0), inflow, boundaries, inlet)
 # bcUS = DirichletBC(Hh.sub(0), noSlip, boundaries, wallS)
@@ -202,8 +204,6 @@ AS = 2.0 * mu * inner(epsilon(uS), epsilon(vS)) * dx(stokes) \
      - (2*mu*inner(sym(grad(uS)), tensor_jump_b(vS,n))*ds(wallS)) \
      - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS,n))*ds(wallS))
 
-AD = mu/k * dot(uD, vD) * dx(darcy)
-
 B1St = - pS * div(vS) * dx(stokes) \
        + jump(vS,n) * avg(pS) * dS(0)
 
@@ -215,13 +215,41 @@ B1S = qS * div(uS) * dx(stokes) \
 h_avg_S = (h('+')+h('-')-abs(h('+')-h('-')))/2
 SS = eta*h_avg_S/degP * dot(jump(pS,n), jump(qS,n)) * dS(0)
 
-B1Dt = - pD * div(vD) * dx(darcy)
-B1D = - qD * div(uD) * dx(darcy)
+G = 1
+l = 1
+Kval = 1
+KvalCorr = max(Kval, 1)
+tau = 1
+alpha = 1
 
-B2St = avg(la) * dot(vS("+"), n("+")) * dS(interf)
-B2S = avg(xi) * dot(uS("+"), n("+")) * dS(interf)
-B2Dt = avg(la) * dot(vD("-"), n("-")) * dS(interf)
-B2D = avg(xi) * dot(uD("-"), n("-")) * dS(interf)
+AD = (2*G*inner(sym(grad(uD)),sym(grad(vD)))*dx(darcy)) + (l*div(uD)*div(vD)*dx(darcy)) \
+     + ((2*l+5*G)*etaU*deg*deg/h_avg*inner(tensor_jump(uD,n),tensor_jump(vD,n))*dS(0)) \
+     - (2*G*inner(avg(sym(grad(uD))), tensor_jump(vD,n))*dS(0)) - (2*G*inner(avg(sym(grad(vD))), tensor_jump(uD,n))*dS(0)) \
+     - (l*avg(div(uD))*jump(vD,n)*dS(0)) - (l*avg(div(vD))*jump(uD,n)*dS(0)) \
+     + ((2*l+5*G)*etaU*deg*deg/h*inner((outer(uD,n) + outer(n,uD))/2, (outer(vD,n) + outer(n,vD))/2)*ds(wallD)) \
+     - (2*G*inner(sym(grad(uD)), (outer(vD,n) + outer(n,vD))/2)*ds(wallD)) \
+     - (2*G*inner(sym(grad(vD)), (outer(uD,n) + outer(n,uD))/2)*ds(wallD)) \
+     - (l*div(uD)*dot(vD,n)*ds(wallD)) - (l*div(vD)*dot(uD,n)*ds(wallD))
+
+SD = (Kval*dot(grad(pD),grad(qD))*dx(darcy)) \
+     + (KvalCorr*eta*degP*degP/h_avg_S*dot(jump(pD,n),jump(qD,n))*dS(0)) \
+     - (Kval*dot(avg(grad(pD)),jump(qD,n))*dS(0)) - (Kval*dot(avg(grad(qD)),jump(pD,n))*dS(0)) \
+     - (Kval*inner(grad(pD),n)*qD*ds(outlet)) - (Kval*inner(grad(qD),n)*pD*ds(outlet)) \
+     + (KvalCorr*eta*degP*degP/h*pD*qD*ds(outlet))
+
+JSt = - avg(qD) * jump(uS, n) * dS(interf)
+JS = avg(pD) * jump(vS, n) * dS(interf)
+JDt = avg(qD) * jump(uD, n) * dS(interf)
+JD = avg(pD) * jump(vD, n) * dS(interf)
+
+B1Dt = qD * div(uD) * dx(darcy) \
+      - alpha * jump(uD,n) * avg(qD) * dS(0) \
+      - alpha * inner(uD,n) * qD * ds(wallD) \
+      + JDt
+
+B1D = - alpha * pD * div(vD) * dx(darcy) \
+       + alpha * jump(vD,n) * avg(pD) * dS(0) \
+       + JD
 
 FuS = dot(fS, vS) * dx(stokes) \
       + (mu*etaU*deg*deg/h*inner(tensor_jump_b(inflow,n),tensor_jump_b(vS,n))*ds(inlet)) \
@@ -229,12 +257,18 @@ FuS = dot(fS, vS) * dx(stokes) \
       + (mu*etaU*deg*deg/h*inner(tensor_jump_b(noSlip,n),tensor_jump_b(vS,n))*ds(wallS)) \
       - (2*mu*inner(sym(grad(vS)), tensor_jump_b(noSlip,n))*ds(wallS))
 
-FuD = dot(fD, vD) * dx(darcy)
+FuD = dot(fD, vD) * dx(darcy) \
+      + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(fakeSlip,n),tensor_jump_b(vD,n))*ds(wallD) \
+      - 2*G*inner(sym(grad(vD)), tensor_jump_b(fakeSlip,n))*ds(wallD) \
+      - l*div(vD)*dot(fakeSlip,n)*ds(wallD)
+
 GqS = gS*qS * dx(stokes) \
       - inner(inflow,n) * qS * ds(inlet) \
       - inner(noSlip,n) * qS * ds(wallS)
 
-GqD = - gD*qD * dx(darcy)
+GqD = - gD*qD * dx(darcy) \
+      - alpha * inner(fakeSlip,n) * qD * ds(wallD) \
+      + (KvalCorr*eta*degP*degP/h*pOut*qD*ds(outlet))
 
 # ****** Assembly and solution of linear system ******** #
 
@@ -242,11 +276,11 @@ rhs = [FuS, FuD, GqS, GqD, 0]
 
 # this can be ordered arbitrarily. I've chosen
 #        uS   uD   pS   pD  la
-lhs = [[ AS,   0, B1St,    0, B2St],
-       [  0,  AD,    0, B1Dt, B2Dt],
+lhs = [[ AS,   0, B1St,  JSt,    0],
+       [  0,  AD,    0, B1Dt,    0],
        [B1S,   0,   SS,    0,    0],
-       [  0, B1D,    0,    0,    0],
-       [B2S, B2D,    0,    0,    0]]
+       [ JS, B1D,    0,   SD,    0],
+       [  0,   0,    0,    0,   SS]]
 
 AA = block_assemble(lhs)
 FF = block_assemble(rhs)
