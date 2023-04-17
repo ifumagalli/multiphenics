@@ -44,7 +44,7 @@ beta = Constant(beta_)
 
 # ********* Numerical method constants  ******* #
 
-deg = 2
+deg = 1
 degP = 1
 etaU = 10
 eta = 10
@@ -206,8 +206,8 @@ FF = block_assemble(rhs)
 sol = BlockFunction(Hh)
 block_solve(AA, sol.block_vector(), FF, "mumps")
 uS_h, pS_h = block_split(sol)
-print(uS_h.vector().norm("l2"), 1709.466)
-print(pS_h.vector().norm("l2"), 5648.086)
+print(uS_h.vector().norm("l2"), [1709.466 if deg==2 else 1209.642])
+print(pS_h.vector().norm("l2"), [5648.086 if deg==2 else 5649.805])
 
 # ****** Saving data ******** #
 uS_h.rename("uS", "uS")

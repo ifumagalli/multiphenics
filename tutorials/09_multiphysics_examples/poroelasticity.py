@@ -221,8 +221,8 @@ FF = block_assemble(rhs)
 sol = BlockFunction(Hh)
 block_solve(AA, sol.block_vector(), FF, "mumps")
 uP_h, pP_h = block_split(sol)
-print(uP_h.vector().norm("l2"), 107.3012)
-print(pP_h.vector().norm("l2"), 272.1546)
+print(uP_h.vector().norm("l2"), [107.3012])
+print(pP_h.vector().norm("l2"), [272.1546])
 
 # ****** Saving data ******** #
 uP_h.rename("uP", "uP")
