@@ -67,7 +67,9 @@ fS = Expression(("(1+4*mu_*A)*pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin
                  "pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )"), degree=4,  A=A, mu_=mu_)
 gS = Constant(0.)
 gNeuS = Expression(("0.0", \
-                    "-pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))"), degree=4)
+                    "-pi*sin(pi*x[0])"), degree=4)
+# gNeuP = Expression(("0.0", \
+#                     "pi*(alpha_-2*G_-l_)*sin(pi*x[0])"), degree=4, alpha_=alpha_, G_=G_, l_=l_)
 
 # ******* Construct mesh and define normal, tangent ****** #
 
@@ -91,11 +93,11 @@ class Top(SubDomain):
 
 class SRight(SubDomain):
     def inside(self, x, on_boundary):
-        return (near(x[0], 1.0) and between(x[1], (0.0, 2.0)) and on_boundary)
+        return (near(x[0], 1.0) and between(x[1], (1.0, 2.0)) and on_boundary)
 
 class SLeft(SubDomain):
     def inside(self, x, on_boundary):
-        return (near(x[0], 0.0) and between(x[1], (0.0, 2.0)) and on_boundary)
+        return (near(x[0], 0.0) and between(x[1], (1.0, 2.0)) and on_boundary)
 
 class MStokes(SubDomain):
     def inside(self, x, on_boundary):
@@ -111,7 +113,7 @@ def tensor_jump_b(u, n):
     return  outer(u, n)/2 + outer(n, u)/2
 
 MStokes().mark(subdomains, stokes)
-Interface().mark(boundaries, dirS)
+Interface().mark(boundaries, interf)
 
 Top().mark(boundaries, dirS)
 SRight().mark(boundaries, dirS)
@@ -202,10 +204,10 @@ FF = block_assemble(rhs)
 # bcs.apply(FF)
 
 sol = BlockFunction(Hh)
-block_solve(AA, sol.block_vector(), FF)#, "mumps")
+block_solve(AA, sol.block_vector(), FF, "mumps")
 uS_h, pS_h = block_split(sol)
 print(uS_h.vector().norm("l2"), 1709.466)
-print(pS_h.vector().norm("l2"), 5739.244)
+print(pS_h.vector().norm("l2"), 5648.086)
 
 # ****** Saving data ******** #
 uS_h.rename("uS", "uS")
