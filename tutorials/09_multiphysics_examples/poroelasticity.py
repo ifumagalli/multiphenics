@@ -60,16 +60,16 @@ uS_ex = Expression(("A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))",\
                     "-A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))"), degree=4, A=A)
 pS_ex = Expression("(1+2*mu_*A)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=4, A=A, mu_=mu_)
 
-fP = Expression(("pi*pi*( (alpha_-4*G_-l_)*cos(pi*x[0])*cos(pi*x[1])-alpha_*sin(pi*x[0])*sin(pi*x[1]) )", \
-                 "pi*pi*( alpha_*cos(pi*x[0])*cos(pi*x[1])-(alpha_-4*G_-l_)*sin(pi*x[0])*sin(pi*x[1]) )"), degree=4, alpha_=alpha_, G_=G_, l_=l_)
+fP = Expression(("pi*pi*( (alpha_-4*G_-2*l_)*cos(pi*x[0])*cos(pi*x[1])-alpha_*sin(pi*x[0])*sin(pi*x[1]) )", \
+                 "pi*pi*( alpha_*cos(pi*x[0])*cos(pi*x[1])-(alpha_-4*G_-2*l_)*sin(pi*x[0])*sin(pi*x[1]) )"), degree=4, alpha_=alpha_, G_=G_, l_=l_)
 gP = Expression("(2*A+beta_)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=4, A=A, beta_=beta_)
 fS = Expression(("(1+4*mu_*A)*pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )", \
                  "pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )"), degree=4,  A=A, mu_=mu_)
 gS = Constant(0.)
-# gNeuS = Expression(("0.0", \
-#                     "-pi*sin(pi*x[0])"), degree=4)
+gNeuS = Expression(("0.0", \
+                    "-pi*sin(pi*x[0])"), degree=4)
 gNeuP = Expression(("0.0", \
-                    "pi*(alpha_-2*G_-l_)*sin(pi*x[0])"), degree=4, alpha_=alpha_, G_=G_, l_=l_)
+                    "pi*(alpha_-2*G_-2*l_)*sin(pi*x[0])"), degree=4, alpha_=alpha_, G_=G_, l_=l_)
 
 # ******* Construct mesh and define normal, tangent ****** #
 
@@ -197,7 +197,7 @@ B1P = 0#NO IN STEADY# JP #\
 FuP = dot(fP, vP) * dx(poroel) \
       + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(dP_ex,n),tensor_jump_b(vP,n))*ds(dirP) \
       - 2*G*inner(sym(grad(vP)), tensor_jump_b(dP_ex,n))*ds(dirP) \
-      - l*div(vP)*dot(dP_ex,n)*ds(dirP)
+      - l*div(vP)*inner(dP_ex,n)*ds(dirP)
 
 GqP = gP*qP * dx(poroel) \
       + (KvalCorr/G*eta*degP*degP/h*pP_ex*qP*ds(dirP)) \
@@ -221,7 +221,7 @@ FF = block_assemble(rhs)
 sol = BlockFunction(Hh)
 block_solve(AA, sol.block_vector(), FF, "mumps")
 uP_h, pP_h = block_split(sol)
-print(uP_h.vector().norm("l2"), [107.3012])
+print(uP_h.vector().norm("l2"), [122.4312])
 print(pP_h.vector().norm("l2"), [272.1546])
 
 # ****** Saving data ******** #
