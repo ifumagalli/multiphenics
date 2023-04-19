@@ -37,10 +37,11 @@ Kval = Constant(k)
 KvalCorr = Constant(max(k, 1.))
 mu_ = 1.
 mu = Constant(mu_)
-alpha_ = 1.+2*G_+l_
-alpha = Constant(alpha_)
 beta_ = 1.
 beta = Constant(beta_)
+
+alpha_ = 1.+2*G_+2*l_
+alpha = Constant(alpha_)
 
 # ********* Numerical method constants  ******* #
 
@@ -52,24 +53,37 @@ tau = 1
 
 # ******* Exact solution and sources ****** #
 
+exactdeg = 7
+
 A = pi*pi*k/G_
 dP_ex = Expression(("-cos(pi*x[0])*cos(pi*x[1])",\
-                    "sin(pi*x[0])*sin(pi*x[1])"), degree=4)
-pP_ex = Expression("pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=4)
+                    "sin(pi*x[0])*sin(pi*x[1])"), degree=exactdeg)
+pP_ex = Expression("pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=exactdeg)
 uS_ex = Expression(("A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))",\
-                    "-A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))"), degree=4, A=A)
-pS_ex = Expression("(1+2*mu_*A)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=4, A=A, mu_=mu_)
+                    "-A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))"), degree=exactdeg, A=A)
+pS_ex = Expression("(1+2*mu_*A)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=exactdeg, A=A, mu_=mu_)
 
 fP = Expression(("pi*pi*( (alpha_-4*G_-2*l_)*cos(pi*x[0])*cos(pi*x[1])-alpha_*sin(pi*x[0])*sin(pi*x[1]) )", \
-                 "pi*pi*( alpha_*cos(pi*x[0])*cos(pi*x[1])-(alpha_-4*G_-2*l_)*sin(pi*x[0])*sin(pi*x[1]) )"), degree=4, alpha_=alpha_, G_=G_, l_=l_)
-gP = Expression("(2*A+beta_)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=4, A=A, beta_=beta_)
+                 "pi*pi*( alpha_*cos(pi*x[0])*cos(pi*x[1])-(alpha_-4*G_-2*l_)*sin(pi*x[0])*sin(pi*x[1]) )"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
+gP = Expression("(2*A+beta_)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=exactdeg, A=A, beta_=beta_)
 fS = Expression(("(1+4*mu_*A)*pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )", \
-                 "pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )"), degree=4,  A=A, mu_=mu_)
+                 "pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )"), degree=exactdeg,  A=A, mu_=mu_)
 gS = Constant(0.)
 gNeuS = Expression(("0.0", \
-                    "-pi*sin(pi*x[0])"), degree=4)
-# gNeuP = Expression(("0.0", \
-#                     "pi*(alpha_-2*G_-l_)*sin(pi*x[0])"), degree=4, alpha_=alpha_, G_=G_, l_=l_)
+                    "-pi*sin(pi*x[0])"), degree=exactdeg)
+gNeuSTop = Expression(("0.0", \
+                       "-pi*sin(pi*x[0])"), degree=exactdeg)
+gNeuP = Expression(("0.0", \
+                    "pi*(alpha_-2*G_-2*l_)*sin(pi*x[0])"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
+
+symgrad_dP_ex = Expression((("pi*(sin(pi*x[0])*cos(pi*x[1]))","pi*(cos(pi*x[0])*sin(pi*x[1]))"),\
+                            ("pi*(cos(pi*x[0])*sin(pi*x[1]))","pi*(sin(pi*x[0])*cos(pi*x[1]))")), degree=exactdeg, A=A)
+
+grad_pP_ex = Expression(("pi*pi*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))",\
+                         "pi*pi*(-sin(pi*x[0])*sin(pi*x[1])+cos(pi*x[0])*cos(pi*x[1]))"), degree=exactdeg, A=A)
+
+symgrad_uS_ex = Expression((("-A*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", "0.0"),\
+                            ("0.0", "A*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))")), degree=exactdeg, A=A)
 
 # ******* Construct mesh and define normal, tangent ****** #
 
@@ -78,6 +92,8 @@ stokes = 13
 dirP = 14
 dirS = 15
 interf = 16
+neuSTop = 20
+
 
 # ******* Set subdomains, boundaries, and interface ****** #
 
@@ -115,7 +131,7 @@ def tensor_jump_b(u, n):
 MStokes().mark(subdomains, stokes)
 Interface().mark(boundaries, interf)
 
-Top().mark(boundaries, dirS)
+Top().mark(boundaries, neuSTop)
 SRight().mark(boundaries, dirS)
 SLeft().mark(boundaries, dirS)
 
@@ -184,7 +200,8 @@ SS = eta*h_avg_S/degP * inner(jump(pS,n), jump(qS,n)) * dS(0)
 FuS = dot(fS, vS) * dx(stokes) \
       + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS_ex,n),tensor_jump_b(vS,n))*ds(dirS)) \
       - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS_ex,n))*ds(dirS)) \
-      + inner(gNeuS, vS) * ds(interf)
+      + inner(gNeuS, vS) * ds(interf) \
+      + inner(gNeuSTop, vS) * ds(neuSTop)
 
 GqS = gS*qS * dx(stokes) \
       - inner(uS_ex,n) * qS * ds(dirS)

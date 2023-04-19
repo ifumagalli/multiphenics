@@ -37,14 +37,15 @@ Kval = Constant(k)
 KvalCorr = Constant(max(k, 1.))
 mu_ = 1.
 mu = Constant(mu_)
-alpha_ = 1.+2*G_+l_
-alpha = Constant(alpha_)
 beta_ = 1.
 beta = Constant(beta_)
 
+alpha_ = 1.+2*G_+2*l_
+alpha = Constant(alpha_)
+
 # ********* Numerical method constants  ******* #
 
-deg = 2
+deg = 1
 degP = 1
 etaU = 10
 eta = 10
@@ -52,24 +53,37 @@ tau = 1
 
 # ******* Exact solution and sources ****** #
 
+exactdeg = 7
+
 A = pi*pi*k/G_
 dP_ex = Expression(("-cos(pi*x[0])*cos(pi*x[1])",\
-                    "sin(pi*x[0])*sin(pi*x[1])"), degree=4)
-pP_ex = Expression("pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=4)
+                    "sin(pi*x[0])*sin(pi*x[1])"), degree=exactdeg)
+pP_ex = Expression("pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=exactdeg)
 uS_ex = Expression(("A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))",\
-                    "-A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))"), degree=4, A=A)
-pS_ex = Expression("(1+2*mu_*A)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=4, A=A, mu_=mu_)
+                    "-A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))"), degree=exactdeg, A=A)
+pS_ex = Expression("(1+2*mu_*A)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=exactdeg, A=A, mu_=mu_)
 
 fP = Expression(("pi*pi*( (alpha_-4*G_-2*l_)*cos(pi*x[0])*cos(pi*x[1])-alpha_*sin(pi*x[0])*sin(pi*x[1]) )", \
-                 "pi*pi*( alpha_*cos(pi*x[0])*cos(pi*x[1])-(alpha_-4*G_-2*l_)*sin(pi*x[0])*sin(pi*x[1]) )"), degree=4, alpha_=alpha_, G_=G_, l_=l_)
-gP = Expression("(2*A+beta_)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=4, A=A, beta_=beta_)
+                 "pi*pi*( alpha_*cos(pi*x[0])*cos(pi*x[1])-(alpha_-4*G_-2*l_)*sin(pi*x[0])*sin(pi*x[1]) )"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
+gP = Expression("(2*A+beta_)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=exactdeg, A=A, beta_=beta_)
 fS = Expression(("(1+4*mu_*A)*pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )", \
-                 "pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )"), degree=4,  A=A, mu_=mu_)
+                 "pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )"), degree=exactdeg,  A=A, mu_=mu_)
 gS = Constant(0.)
 gNeuS = Expression(("0.0", \
-                    "-pi*sin(pi*x[0])"), degree=4)
+                    "-pi*sin(pi*x[0])"), degree=exactdeg)
+gNeuSTop = Expression(("0.0", \
+                       "-pi*sin(pi*x[0])"), degree=exactdeg)
 gNeuP = Expression(("0.0", \
-                    "pi*(alpha_-2*G_-2*l_)*sin(pi*x[0])"), degree=4, alpha_=alpha_, G_=G_, l_=l_)
+                    "pi*(alpha_-2*G_-2*l_)*sin(pi*x[0])"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
+
+symgrad_dP_ex = Expression((("pi*(sin(pi*x[0])*cos(pi*x[1]))","pi*(cos(pi*x[0])*sin(pi*x[1]))"),\
+                            ("pi*(cos(pi*x[0])*sin(pi*x[1]))","pi*(sin(pi*x[0])*cos(pi*x[1]))")), degree=exactdeg, A=A)
+
+grad_pP_ex = Expression(("pi*pi*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))",\
+                         "pi*pi*(-sin(pi*x[0])*sin(pi*x[1])+cos(pi*x[0])*cos(pi*x[1]))"), degree=exactdeg, A=A)
+
+symgrad_uS_ex = Expression((("-A*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", "0.0"),\
+                            ("0.0", "A*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))")), degree=exactdeg, A=A)
 
 # ******* Construct mesh and define normal, tangent ****** #
 
@@ -78,6 +92,7 @@ stokes = 13
 dirP = 14
 dirS = 15
 interf = 16
+neuSTop = 20
 
 # ******* Set subdomains, boundaries, and interface ****** #
 
@@ -113,7 +128,7 @@ def tensor_jump_b(u, n):
     return  outer(u, n)/2 + outer(n, u)/2
 
 MPoroel().mark(subdomains, poroel)
-Interface().mark(boundaries, dirP)
+Interface().mark(boundaries, interf)
 
 Bot().mark(boundaries, dirP)
 PRight().mark(boundaries, dirP)
@@ -179,29 +194,30 @@ SP = (Kval/G*inner(grad(pP),grad(qP))*dx(poroel)) \
      + (KvalCorr/G*eta*degP*degP/h_avg_S*inner(jump(pP,n),jump(qP,n))*dS(0)) \
      - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
      - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
-     + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP))
-
-JPt = pP * dot(vP, n) * ds(interf)
+     + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
+     - (Kval/G*inner(grad(pP),n)*qP*ds(interf)) - (Kval/G*inner(grad(qP),n)*pP*ds(interf)) \
+     + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(interf))
 
 B1Pt = - alpha * pP * div(vP) * dx(poroel) \
        + alpha * jump(vP,n) * avg(pP) * dS(0) \
-       + alpha * inner(vP,n) * pP * ds(dirP) \
-       + JPt
+       + alpha * inner(vP,n) * pP * ds(dirP)
 
 # NB In the STEADY case, the coupling pP->uP is one-directional
-B1P = 0#NO IN STEADY# JP #\
-      #NO IN STEADY# + alpha * qP * div(uP) * dx(poroel) \
+B1P = 0#NO IN STEADY# + alpha * qP * div(uP) * dx(poroel) \
       #NO IN STEADY# - alpha * jump(uP,n) * avg(qP) * dS(0) \
       #NO IN STEADY# - alpha * inner(uP,n) * qP * ds(dirP)
 
 FuP = dot(fP, vP) * dx(poroel) \
       + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(dP_ex,n),tensor_jump_b(vP,n))*ds(dirP) \
       - 2*G*inner(sym(grad(vP)), tensor_jump_b(dP_ex,n))*ds(dirP) \
-      - l*div(vP)*inner(dP_ex,n)*ds(dirP)
+      - l*div(vP)*inner(dP_ex,n)*ds(dirP) \
+      + inner(gNeuP, vP) * ds(interf)
 
 GqP = gP*qP * dx(poroel) \
       + (KvalCorr/G*eta*degP*degP/h*pP_ex*qP*ds(dirP)) \
-      - (Kval/G*pP_ex*inner(grad(qP),n)*ds(dirP)) #\
+      + (KvalCorr/G*eta*degP*degP/h*pP_ex*qP*ds(interf)) \
+      - (Kval/G*pP_ex*inner(grad(qP),n)*ds(dirP)) \
+      - (Kval/G*pP_ex*inner(grad(qP),n)*ds(interf)) #\
       #NO IN STEADY# - alpha * inner(dP_ex,n) * qP * ds(dirP)
 
 # ****** Assembly and solution of linear system ******** #
