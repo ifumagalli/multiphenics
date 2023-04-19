@@ -237,8 +237,10 @@ FF = block_assemble(rhs)
 sol = BlockFunction(Hh)
 block_solve(AA, sol.block_vector(), FF, "mumps")
 uP_h, pP_h = block_split(sol)
-print(uP_h.vector().norm("l2"), [122.4312])
+print(uP_h.vector().norm("l2"), [86.59258])
 print(pP_h.vector().norm("l2"), [272.1546])
+assert isclose(uP_h.vector().norm("l2"), [122.4350 if deg==2 else 86.59258])
+assert isclose(pP_h.vector().norm("l2"), [272.1546 if deg==2 else 272.1546])
 
 # ****** Saving data ******** #
 uP_h.rename("uP", "uP")
