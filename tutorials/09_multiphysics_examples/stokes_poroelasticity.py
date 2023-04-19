@@ -251,7 +251,8 @@ SP = (Kval/G*inner(grad(pP),grad(qP))*dx(poroel)) \
      + (KvalCorr/G*eta*degP*degP/h_avg_S*inner(jump(pP,n),jump(qP,n))*dS(0)) \
      - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
      - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
-     + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP))
+     + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
+     - (Kval/G*inner(grad(pP('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP('+')*dS(interf))
 
 JSt = pP('+') * dot(vS('-'), n('-')) * dS(interf)
 JS = qP('+') * dot(uS('-'), n('+')) * dS(interf)
@@ -286,7 +287,8 @@ GqS = gS*qS * dx(stokes) \
 
 GqP = gP*qP * dx(poroel) \
       + (KvalCorr/G*eta*degP*degP/h*pP_ex*qP*ds(dirP)) \
-      - (Kval/G*pP_ex*inner(grad(qP),n)*ds(dirP)) #\
+      - (Kval/G*pP_ex*inner(grad(qP),n)*ds(dirP)) \
+      - (Kval/G*pP_ex*inner(grad(qP('+')),n('+'))*dS(interf)) #\
       #NO IN STEADY# - alpha * inner(dP_ex,n) * qP * ds(dirP)
 
 # ****** Assembly and solution of linear system ******** #
