@@ -59,7 +59,7 @@ alpha = Constant(alpha_)
 
 # ********* Numerical method constants  ******* #
 
-deg = 2
+deg = 1
 degP = 1
 etaU = 10
 eta = 10

@@ -70,9 +70,9 @@ fS = Expression(("(1+4*mu_*A)*pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin
                  "pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )"), degree=exactdeg,  A=A, mu_=mu_)
 gS = Constant(0.)
 gNeuS = Expression(("0.0", \
-                    "-pi*sin(pi*x[0])"), degree=exactdeg)
+                    "-pi*sin(pi*x[0])*(1)"), degree=exactdeg)
 gNeuSTop = Expression(("0.0", \
-                       "-pi*sin(pi*x[0])"), degree=exactdeg)
+                       "pi*sin(pi*x[0])*(-1)"), degree=exactdeg)
 gNeuP = Expression(("0.0", \
                     "pi*(alpha_-2*G_-2*l_)*sin(pi*x[0])"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
 
