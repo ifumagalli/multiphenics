@@ -256,7 +256,7 @@ SP = (Kval/G*inner(grad(pP),grad(qP))*dx(poroel)) \
 JSt = pP('+') * dot(vS('-'), n('-')) * dS(interf)
 JS = qP('+') * dot(uS('-'), n('+')) * dS(interf)
 #NO IN STEADY# JP = - qP('-') * dot(uP('-'), n('-')) * dS(interf)
-JPt = pP('+') * dot(vP('+'), n('-')) * dS(interf)
+JPt = pP('-') * dot(vP('-'), n('-')) * dS(interf)
 
 B1Pt = - alpha * pP * div(vP) * dx(poroel) \
        + alpha * jump(vP,n) * avg(pP) * dS(0) \
