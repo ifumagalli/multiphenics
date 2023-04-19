@@ -39,10 +39,11 @@ Kval = Constant(k)
 KvalCorr = Constant(max(k, 1.))
 mu_ = 1.
 mu = Constant(mu_)
-alpha_ = 1.+2*G_+2*l_
-alpha = Constant(alpha_)
 beta_ = 1.
 beta = Constant(beta_)
+
+alpha_ = 1.+2*G_+2*l_
+alpha = Constant(alpha_)
 
 # ********* Numerical method constants  ******* #
 
@@ -72,6 +73,8 @@ fS = Expression(("(1+4*mu_*A)*pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin
 gS = Constant(0.)
 gNeuS = Expression(("0.0", \
                     "-pi*sin(pi*x[0])"), degree=exactdeg)
+gNeuSTop = Expression(("0.0", \
+                       "-pi*sin(pi*x[0])"), degree=exactdeg)
 gNeuP = Expression(("0.0", \
                     "pi*(alpha_-2*G_-2*l_)*sin(pi*x[0])"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
 
@@ -81,6 +84,9 @@ symgrad_dP_ex = Expression((("pi*(sin(pi*x[0])*cos(pi*x[1]))","pi*(cos(pi*x[0])*
 grad_pP_ex = Expression(("pi*pi*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))",\
                          "pi*pi*(-sin(pi*x[0])*sin(pi*x[1])+cos(pi*x[0])*cos(pi*x[1]))"), degree=exactdeg, A=A)
 
+symgrad_uS_ex = Expression((("-A*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", "0.0"),\
+                            ("0.0", "A*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))")), degree=exactdeg, A=A)
+
 # ******* Construct mesh and define normal, tangent ****** #
 
 poroel = 10
@@ -88,6 +94,7 @@ stokes = 13
 dirP = 14
 dirS = 15
 interf = 16
+neuSTop = 20
 
 # ******* Loop for h-convergence ****** #
 
