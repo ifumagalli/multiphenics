@@ -33,9 +33,10 @@ pP: Poroelastic pressure in L^2(OmP)
 
 transmission conditions:
 
-uS.nS + uD.nD = 0
--(2*mu*eps(uS)-pS*I)*nS.nS = pD
--(2*mu*eps(uS)-pS*I)*tS.nS = alpha*mu*k^-0.5*uS.tS
+uS.nS = (K/G)grad(pP).nP
+-(2*mu*eps(uS)-pS*I)*nS.nS = pP
+-(2*mu*eps(uS)-pS*I)*tS.nS = 0
+-(2*G*eps(uP)+l*div(uP)*I + alpha*p*I)*nP -(2*mu*eps(uS)-pS*I)*nS = 0
 """
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
@@ -84,9 +85,9 @@ fS = Expression(("(1+4*mu_*A)*pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin
                  "pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )"), degree=exactdeg,  A=A, mu_=mu_)
 gS = Constant(0.)
 gNeuS = Expression(("0.0", \
-                    "-pi*sin(pi*x[0])"), degree=exactdeg)
+                    "-pi*sin(pi*x[0])*(1)"), degree=exactdeg)
 gNeuSTop = Expression(("0.0", \
-                       "-pi*sin(pi*x[0])"), degree=exactdeg)
+                       "pi*sin(pi*x[0])*(-1)"), degree=exactdeg)
 gNeuP = Expression(("0.0", \
                     "pi*(alpha_-2*G_-2*l_)*sin(pi*x[0])"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
 
@@ -167,7 +168,6 @@ SLeft().mark(boundaries, dirS)
 PRight().mark(boundaries, dirP)
 PLeft().mark(boundaries, dirP)
 Bot().mark(boundaries, dirP)
-
 
 n = FacetNormal(mesh)
 t = as_vector((-n[1], n[0]))
@@ -275,7 +275,6 @@ FuS = dot(fS, vS) * dx(stokes) \
       - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS_ex,n))*ds(dirS)) \
       + inner(gNeuSTop, vS) * ds(neuSTop) # \
       #THIS SEEMS TO REPLACE JSt (and quite precisely, especially in terms of uS,pS,uP)#  + inner(gNeuS, vS('+')) * dS(interf)
-
 
 FuP = dot(fP, vP) * dx(poroel) \
       + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(dP_ex,n),tensor_jump_b(vP,n))*ds(dirP) \
