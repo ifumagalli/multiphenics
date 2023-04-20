@@ -18,6 +18,8 @@ from numpy import isclose
 from dolfin import *
 from multiphenics import *
 
+import os
+
 """
 Stokes-Poroelasticity equations
 Coupled mixed formulation using Lagrange multiplier,
@@ -40,6 +42,14 @@ uS.nS = (K/G)grad(pP).nP
 """
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
+
+# ********* I/O parameters  ******* #
+
+outputPath = "output"
+outputFileBasename = "stokes_poroelasticity"
+
+if not os.path.exists(outputPath):
+    os.makedirs(outputPath)
 
 # ********* Model constants  ******* #
 
@@ -319,12 +329,13 @@ print(uP_h.vector().norm("l2"), [86.59258])
 print(pP_h.vector().norm("l2"), [272.1546])
 
 # ****** Saving data ******** #
+
 uS_h.rename("uS", "uS")
 pS_h.rename("pS", "pS")
 uP_h.rename("uP", "uP")
 pP_h.rename("pP", "pP")
 
-output = XDMFFile("stokes_poroelasticity.xdmf")
+output = XDMFFile(outputPath+'/'+outputFileBasename+".xdmf")
 output.parameters["rewrite_function_mesh"] = False
 output.parameters["functions_share_mesh"] = True
 output.write(uS_h, 0.0)

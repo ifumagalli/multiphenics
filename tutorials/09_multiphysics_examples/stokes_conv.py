@@ -19,6 +19,7 @@ from dolfin import *
 from multiphenics import *
 
 import csv
+import os
 
 """
 Steady Stokes problem.
@@ -27,6 +28,14 @@ pS: Stokes pressure in L^2(OmS)
 """
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
+
+# ********* I/O parameters  ******* #
+
+outputPath = "output"
+outputFileBasename = "stokes_conv"
+
+if not os.path.exists(outputPath):
+    os.makedirs(outputPath)
 
 # ********* Model constants  ******* #
 
@@ -98,7 +107,7 @@ neuSTop = 20
 
 # ******* Loop for h-convergence ****** #
 
-with open('stokes_conv.csv', 'w', newline='') as csvfile:
+with open(outputPath+'/'+outputFileBasename+'.csv', 'w', newline='') as csvfile:
     csvwriter = csv.writer(csvfile, delimiter=',',
                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
     csvwriter.writerow(["h", "err_u_L2", "err_u_H10", "err_p_L2"])
@@ -254,13 +263,13 @@ for ii in range(1,5):
     uS_h.rename("uS", "uS")
     pS_h.rename("pS", "pS")
 
-    output = XDMFFile("stokes_conv_"+str(ii)+".xdmf")
+    output = XDMFFile(outputPath+'/'+outputFileBasename+"_"+str(ii)+".xdmf")
     output.parameters["rewrite_function_mesh"] = False
     output.parameters["functions_share_mesh"] = True
     output.write(uS_h, 0.0)
     output.write(pS_h, 0.0)
 
-    with open('stokes_conv.csv', 'a', newline='') as csvfile:
+    with open(outputPath+'/'+outputFileBasename+'.csv', 'a', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',',
                                quotechar='|', quoting=csv.QUOTE_MINIMAL)
         csvwriter.writerow([1.0/N, err_u_L2, err_u_H10, err_p_L2])

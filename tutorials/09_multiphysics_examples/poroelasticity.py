@@ -18,6 +18,8 @@ from numpy import isclose
 from dolfin import *
 from multiphenics import *
 
+import os
+
 """
 Poroelasticity problem with 1 fluid compartment.
 uP: Poroelastic displacement in H^1(OmP)
@@ -25,6 +27,14 @@ pP: Poroelastic pressure in L^2(OmP)
 """
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
+
+# ********* I/O parameters  ******* #
+
+outputPath = "output"
+outputFileBasename = "poroelasticity"
+
+if not os.path.exists(outputPath):
+    os.makedirs(outputPath)
 
 # ********* Model constants  ******* #
 
@@ -243,10 +253,11 @@ assert isclose(uP_h.vector().norm("l2"), [122.4350 if deg==2 else 86.59258])
 assert isclose(pP_h.vector().norm("l2"), [272.1546 if deg==2 else 272.1546])
 
 # ****** Saving data ******** #
+
 uP_h.rename("uP", "uP")
 pP_h.rename("pP", "pP")
 
-output = XDMFFile("poroelasticity.xdmf")
+output = XDMFFile(outputPath+'/'+outputFileBasename+".xdmf")
 output.parameters["rewrite_function_mesh"] = False
 output.parameters["functions_share_mesh"] = True
 output.write(uP_h, 0.0)

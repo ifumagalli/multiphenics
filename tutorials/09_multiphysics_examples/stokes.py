@@ -18,6 +18,8 @@ from numpy import isclose
 from dolfin import *
 from multiphenics import *
 
+import os
+
 """
 Steady Stokes problem.
 uS: Stokes velocity in H^1(OmS)
@@ -25,6 +27,14 @@ pS: Stokes pressure in L^2(OmS)
 """
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
+
+# ********* I/O parameters  ******* #
+
+outputPath = "output"
+outputFileBasename = "stokes"
+
+if not os.path.exists(outputPath):
+    os.makedirs(outputPath)
 
 # ********* Model constants  ******* #
 
@@ -229,10 +239,11 @@ assert isclose(uS_h.vector().norm("l2"), [1709.466 if deg==2 else 1209.399])
 assert isclose(pS_h.vector().norm("l2"), [5648.087 if deg==2 else 5651.009])
 
 # ****** Saving data ******** #
+
 uS_h.rename("uS", "uS")
 pS_h.rename("pS", "pS")
 
-output = XDMFFile("stokes.xdmf")
+output = XDMFFile(outputPath+'/'+outputFileBasename+".xdmf")
 output.parameters["rewrite_function_mesh"] = False
 output.parameters["functions_share_mesh"] = True
 output.write(uS_h, 0.0)

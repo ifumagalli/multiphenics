@@ -19,6 +19,7 @@ from dolfin import *
 from multiphenics import *
 
 import csv
+import os
 
 """
 Steady Stokes-Poroelasticity problem.
@@ -38,6 +39,14 @@ uS.nS = (K/G)grad(pP).nP
 """
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
+
+# ********* I/O parameters  ******* #
+
+outputPath = "output"
+outputFileBasename = "stokes_poroelasticity_conv"
+
+if not os.path.exists(outputPath):
+    os.makedirs(outputPath)
 
 # ********* Model constants  ******* #
 
@@ -109,7 +118,7 @@ neuSTop = 20
 
 # ******* Loop for h-convergence ****** #
 
-with open('stokes_poroelasticity_conv.csv', 'w', newline='') as csvfile:
+with open(outputPath+'/'+outputFileBasename+'.csv', 'w', newline='') as csvfile:
     csvwriter = csv.writer(csvfile, delimiter=',',
                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
     csvwriter.writerow(["h", "err_uS_L2", "err_uS_H10", "err_pS_L2", "err_uP_L2", "err_uP_H10", "err_pP_L2", "err_pP_H10"])
@@ -354,7 +363,7 @@ for ii in range(1,6):
     uP_h.rename("uP", "uP")
     pP_h.rename("pP", "pP")
 
-    output = XDMFFile("stokes_poroelasticity_conv_"+str(ii)+".xdmf")
+    output = XDMFFile(outputPath+'/'+outputFileBasename+"_"+str(ii)+".xdmf")
     output.parameters["rewrite_function_mesh"] = False
     output.parameters["functions_share_mesh"] = True
     output.write(uS_h, 0.0)
@@ -362,7 +371,7 @@ for ii in range(1,6):
     output.write(uP_h, 0.0)
     output.write(pP_h, 0.0)
 
-    with open('stokes_poroelasticity_conv.csv', 'a', newline='') as csvfile:
+    with open(outputPath+'/'+outputFileBasename+'.csv', 'a', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',',
                                quotechar='|', quoting=csv.QUOTE_MINIMAL)
         csvwriter.writerow([1.0/N, err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10])

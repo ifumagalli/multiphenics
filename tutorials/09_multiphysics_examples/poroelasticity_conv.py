@@ -19,6 +19,7 @@ from dolfin import *
 from multiphenics import *
 
 import csv
+import os
 
 """
 Poroelasticity problem with 1 fluid compartment.
@@ -27,6 +28,14 @@ pP: Poroelastic pressure in L^2(OmP)
 """
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
+
+# ********* I/O parameters  ******* #
+
+outputPath = "output"
+outputFileBasename = "poroelasticity_conv"
+
+if not os.path.exists(outputPath):
+    os.makedirs(outputPath)
 
 # ********* Model constants  ******* #
 
@@ -98,7 +107,7 @@ neuSTop = 20
 
 # ******* Loop for h-convergence ****** #
 
-with open('poroelasticity_conv.csv', 'w', newline='') as csvfile:
+with open(outputPath+'/'+outputFileBasename+'.csv', 'w', newline='') as csvfile:
     csvwriter = csv.writer(csvfile, delimiter=',',
                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
     csvwriter.writerow(["h", "err_u_L2", "err_u_H10", "err_p_L2", "err_p_H10"])
@@ -267,16 +276,17 @@ for ii in range(1,5):
     print("Errors: uL2: ", err_u_L2, "  uH10: ", err_u_H10, "  pL2: ", err_p_L2, "  pH10: ", err_p_H10)
 
     # ****** Saving data ******** #
+
     uP_h.rename("uP", "uP")
     pP_h.rename("pP", "pP")
 
-    output = XDMFFile("poroelasticity_conv_"+str(ii)+".xdmf")
+    output = XDMFFile(outputPath+'/'+outputFileBasename+"_"+str(ii)+".xdmf")
     output.parameters["rewrite_function_mesh"] = False
     output.parameters["functions_share_mesh"] = True
     output.write(uP_h, 0.0)
     output.write(pP_h, 0.0)
 
-    with open('poroelasticity_conv.csv', 'a', newline='') as csvfile:
+    with open(outputPath+'/'+outputFileBasename+'.csv', 'a', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',',
                                quotechar='|', quoting=csv.QUOTE_MINIMAL)
         csvwriter.writerow([1.0/N, err_u_L2, err_u_H10, err_p_L2, err_p_H10])
