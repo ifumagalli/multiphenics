@@ -268,6 +268,7 @@ for ii in range(1,5):
     output.parameters["functions_share_mesh"] = True
     output.write(uS_h, 0.0)
     output.write(pS_h, 0.0)
+    output.close()
 
     with open(outputPath+'/'+outputFileBasename+'.csv', 'a', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',',

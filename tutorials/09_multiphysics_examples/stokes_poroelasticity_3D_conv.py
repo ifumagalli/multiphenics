@@ -22,7 +22,7 @@ import csv
 import os
 
 """
-Steady Stokes-Poroelasticity problem.
+3D Steady Stokes-Poroelasticity problem.
 
 uS: Stokes velocity in H^1(OmS)
 uP: Poroelastic displacement in H^1(OmP)
@@ -43,7 +43,7 @@ parameters["ghost_mode"] = "shared_facet"  # required by dS
 # ********* I/O parameters  ******* #
 
 outputPath = "output"
-outputFileBasename = "stokes_poroelasticity_conv"
+outputFileBasename = "stokes_poroelasticity_3D_conv"
 
 if not os.path.exists(outputPath):
     os.makedirs(outputPath)
@@ -75,37 +75,47 @@ tau = 1
 
 # ******* Exact solution and sources ****** #
 
-exactdeg = 7
+exactdeg = 4
 
 A = pi*pi*k/G_
-dP_ex = Expression(("-cos(pi*x[0])*cos(pi*x[1])",\
-                    "sin(pi*x[0])*sin(pi*x[1])"), degree=exactdeg)
-pP_ex = Expression("pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=exactdeg)
-uS_ex = Expression(("A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))",\
-                    "-A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))"), degree=exactdeg, A=A)
-pS_ex = Expression("(1+2*mu_*A)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=exactdeg, A=A, mu_=mu_)
+B = 1.0/(alpha_-1.0)
 
-fP = Expression(("pi*pi*( (alpha_-4*G_-2*l_)*cos(pi*x[0])*cos(pi*x[1])-alpha_*sin(pi*x[0])*sin(pi*x[1]) )", \
-                 "pi*pi*( alpha_*cos(pi*x[0])*cos(pi*x[1])-(alpha_-4*G_-2*l_)*sin(pi*x[0])*sin(pi*x[1]) )"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
-gP = Expression("(2*A+beta_)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", degree=exactdeg, A=A, beta_=beta_)
-fS = Expression(("(1+4*mu_*A)*pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )", \
-                 "pi*pi*( cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]) )"), degree=exactdeg,  A=A, mu_=mu_)
+dP_ex = Expression(("-cos(pi*x[0])*cos(pi*x[1])*x[2]",\
+                    "sin(pi*x[0])*sin(pi*x[1])*x[2]",\
+                    "x[2]"), degree=exactdeg)
+pP_ex = Expression("pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))*x[2] + B*l_", degree=exactdeg, B=B, l_=l_)
+uS_ex = Expression(("A*(cos(pi*x[0])*cos(pi*x[1]) - sin(pi*x[0])*sin(pi*x[1]))*x[2]",\
+                    "-A*(cos(pi*x[0])*cos(pi*x[1]) - sin(pi*x[0])*sin(pi*x[1]))*x[2]",\
+                    "A/pi*(cos(pi*x[0])*sin(pi*x[1]) + sin(pi*x[0])*cos(pi*x[1]))"), degree=exactdeg, A=A)
+pS_ex = Expression("(1+2*mu_*A)*pi*(sin(pi*x[0])*cos(pi*x[1]) + cos(pi*x[0])*sin(pi*x[1]))*x[2] + B*l_", degree=exactdeg, A=A, B=B, mu_=mu_, l_=l_)
+
+fP = Expression(("pi*pi*( (alpha_-4*G_-2*l_)*cos(pi*x[0])*cos(pi*x[1])*x[2]-alpha_*sin(pi*x[0])*sin(pi*x[1])*x[2] )", \
+                 "pi*pi*( alpha_*cos(pi*x[0])*cos(pi*x[1])*x[2]-(alpha_-4*G_-2*l_)*sin(pi*x[0])*sin(pi*x[1])*x[2] )", \
+                 "pi*alpha_*( cos(pi*x[0])*sin(pi*x[1])+sin(pi*x[0])*cos(pi*x[1]) )"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
+gP = Expression("(2*A+beta_)*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1])) + beta_*B*l_", degree=exactdeg, A=A, B=B, beta_=beta_, l_=l_)
+fS = Expression(("(1+4*mu_*A)*pi*pi*( cos(pi*x[0])*cos(pi*x[1]) - sin(pi*x[0])*sin(pi*x[1]) ) * x[2]", \
+                 "pi*pi*( cos(pi*x[0])*cos(pi*x[1]) - sin(pi*x[0])*sin(pi*x[1]) ) * x[2]", \
+                 "(1+4*mu_*A)*pi*(cos(pi*x[0])*sin(pi*x[1]) + sin(pi*x[0])*cos(pi*x[1]))"), degree=exactdeg,  A=A, mu_=mu_)
 gS = Constant(0.)
 gNeuS = Expression(("0.0", \
-                    "-pi*sin(pi*x[0])*(1)"), degree=exactdeg)
+                    "-pi*sin(pi*x[0])*(1)*x[2] + B*l_",\
+                    "0.0"), degree=exactdeg, B=B, l_=l_)
 gNeuSTop = Expression(("0.0", \
-                       "pi*sin(pi*x[0])*(-1)"), degree=exactdeg)
-gNeuP = Expression(("0.0", \
-                    "pi*(alpha_-2*G_-2*l_)*sin(pi*x[0])"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
+                       "-pi*sin(pi*x[0])*(1)*x[2] - B*l_",\
+                       "0.0"), degree=exactdeg, B=B, l_=l_)
+# gNeuP = Expression(("0.0", \
+#                     "pi*(alpha_-2*G_-2*l_)*sin(pi*x[0])"), degree=exactdeg, alpha_=alpha_, G_=G_, l_=l_)
+gNeuP = -gNeuS
 
-symgrad_dP_ex = Expression((("pi*(sin(pi*x[0])*cos(pi*x[1]))","pi*(cos(pi*x[0])*sin(pi*x[1]))"),\
-                            ("pi*(cos(pi*x[0])*sin(pi*x[1]))","pi*(sin(pi*x[0])*cos(pi*x[1]))")), degree=exactdeg, A=A)
-
-grad_pP_ex = Expression(("pi*pi*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))",\
-                         "pi*pi*(-sin(pi*x[0])*sin(pi*x[1])+cos(pi*x[0])*cos(pi*x[1]))"), degree=exactdeg, A=A)
-
-symgrad_uS_ex = Expression((("-A*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))", "0.0"),\
-                            ("0.0", "A*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))")), degree=exactdeg, A=A)
+symgrad_dP_ex = Expression((("pi*(sin(pi*x[0])*cos(pi*x[1]))*x[2]","pi*(cos(pi*x[0])*sin(pi*x[1]))*x[2]","-0.5*cos(pi*x[0])*cos(pi*x[1])"),\
+                            ("pi*(cos(pi*x[0])*sin(pi*x[1]))*x[2]","pi*(sin(pi*x[0])*cos(pi*x[1]))*x[2]","0.5*sin(pi*x[0])*sin(pi*x[1])"),\
+                            ("-0.5*cos(pi*x[0])*cos(pi*x[1])", "0.5*sin(pi*x[0])*sin(pi*x[1])", "0.5")), degree=exactdeg)
+grad_pP_ex = Expression(("pi*pi*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))*x[2]",\
+                         "pi*pi*(-sin(pi*x[0])*sin(pi*x[1])+cos(pi*x[0])*cos(pi*x[1]))*x[2]",\
+                         "pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))"), degree=exactdeg)
+symgrad_uS_ex = Expression((("-A*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))*x[2]", "0.0", "A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))"),\
+                            ("0.0", "A*pi*(sin(pi*x[0])*cos(pi*x[1])+cos(pi*x[0])*sin(pi*x[1]))*x[2]", "0.0"),\
+                            ("A*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))", "0.0", "0.0")), degree=exactdeg, A=A)
 
 # ******* Construct mesh and define normal, tangent ****** #
 
@@ -125,36 +135,29 @@ with open(outputPath+'/'+outputFileBasename+'.csv', 'w', newline='') as csvfile:
 
 for ii in range(1,6):
 
-    N = 5*(2**ii)
+    N = 3*(2**ii)
     print("h = ", 1.0/N)
 
     # ******* Set subdomains, boundaries, and interface ****** #
 
-    mesh = RectangleMesh(Point(0.0, 0.0), Point(1.0, 2.0), N, N)
-    subdomains = MeshFunction("size_t", mesh, 2)
+    dim = 3
+    mesh = BoxMesh(Point(0.0, 0.0, 0.0), Point(1.0, 2.0, 1.0), N, 2*N, N)
+    subdomains = MeshFunction("size_t", mesh, dim)
     subdomains.set_all(0)
-    boundaries = MeshFunction("size_t", mesh, 1)
+    boundaries = MeshFunction("size_t", mesh, dim-1)
     boundaries.set_all(0)
 
     class Top(SubDomain):
         def inside(self, x, on_boundary):
             return (near(x[1], 2.0) and on_boundary)
 
-    class SRight(SubDomain):
+    class SLateral(SubDomain):
         def inside(self, x, on_boundary):
-            return (near(x[0], 1.0) and between(x[1], (1.0, 2.0)) and on_boundary)
+            return (between(x[1], (1.0, 2.0)) and on_boundary)
 
-    class SLeft(SubDomain):
+    class PLateral(SubDomain):
         def inside(self, x, on_boundary):
-            return (near(x[0], 0.0) and between(x[1], (1.0, 2.0)) and on_boundary)
-
-    class PRight(SubDomain):
-        def inside(self, x, on_boundary):
-            return (near(x[0], 1.0) and between(x[1], (0.0, 1.0)) and on_boundary)
-
-    class PLeft(SubDomain):
-        def inside(self, x, on_boundary):
-            return (near(x[0], 0.0) and between(x[1], (0.0, 1.0)) and on_boundary)
+            return (between(x[1], (0.0, 1.0)) and on_boundary)
 
     class Bot(SubDomain):
         def inside(self, x, on_boundary):
@@ -181,15 +184,12 @@ for ii in range(1,6):
     MStokes().mark(subdomains, stokes)
     Interface().mark(boundaries, interf)
 
-    Top().mark(boundaries, neuSTop)
-    SRight().mark(boundaries, dirS)
-    SLeft().mark(boundaries, dirS)
-    PRight().mark(boundaries, dirP)
-    PLeft().mark(boundaries, dirP)
+    Top().mark(boundaries, dirS)
+    SLateral().mark(boundaries, dirS)
+    PLateral().mark(boundaries, dirP)
     Bot().mark(boundaries, dirP)
 
     n = FacetNormal(mesh)
-    t = as_vector((-n[1], n[0]))
 
     # ******* Set subdomains, boundaries, and interface ****** #
 
@@ -202,12 +202,12 @@ for ii in range(1,6):
     dS = Measure("dS", domain=mesh, subdomain_data=boundaries)
 
     # verifying the domain size
-    areaP = assemble(1.*dx(poroel))
-    areaS = assemble(1.*dx(stokes))
-    lengthI = assemble(1.*dS(interf))
-    print("area(Omega_P) = ", areaP)
-    print("area(Omega_S) = ", areaS)
-    print("length(Sigma) = ", lengthI)
+    volumeP = assemble(1.*dx(poroel))
+    volumeS = assemble(1.*dx(stokes))
+    areaI = assemble(1.*dS(interf))
+    print("volume(Omega_P) = ", volumeP)
+    print("volume(Omega_S) = ", volumeS)
+    print("area(Sigma) = ", areaI)
     
     # ***** Global FE spaces and their restrictions ****** #
 
