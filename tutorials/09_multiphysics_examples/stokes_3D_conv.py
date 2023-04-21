@@ -22,19 +22,9 @@ import csv
 import os
 
 """
-3D Steady Stokes-Poroelasticity problem.
-
+3D Steady Stokes problem.
 uS: Stokes velocity in H^1(OmS)
-uP: Poroelastic displacement in H^1(OmP)
 pS: Stokes pressure in L^2(OmS)
-pP: Poroelastic pressure in L^2(OmP)
-
-transmission conditions:
-
-uS.nS = (K/G)grad(pP).nP
--(2*mu*eps(uS)-pS*I)*nS.nS = pP
--(2*mu*eps(uS)-pS*I)*tS.nS = 0
--(2*G*eps(uP)+l*div(uP)*I + alpha*p*I)*nP -(2*mu*eps(uS)-pS*I)*nS = 0
 """
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
@@ -42,7 +32,7 @@ parameters["ghost_mode"] = "shared_facet"  # required by dS
 # ********* I/O parameters  ******* #
 
 outputPath = "output"
-outputFileBasename = "stokes_poroelasticity_3D_conv"
+outputFileBasename = "stokes_3D_conv"
 
 if not os.path.exists(outputPath):
     os.makedirs(outputPath)
@@ -130,7 +120,7 @@ neuSTop = 20
 with open(outputPath+'/'+outputFileBasename+'.csv', 'w', newline='') as csvfile:
     csvwriter = csv.writer(csvfile, delimiter=',',
                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
-    csvwriter.writerow(["h", "err_uS_L2", "err_uS_H10", "err_pS_L2", "err_uP_L2", "err_uP_H10", "err_pP_L2", "err_pP_H10"])
+    csvwriter.writerow(["h", "err_u_L2", "err_u_H10", "err_p_L2"])
 
 for ii in range(1,6):
 
@@ -140,7 +130,7 @@ for ii in range(1,6):
     # ******* Set subdomains, boundaries, and interface ****** #
 
     dim = 3
-    mesh = BoxMesh(Point(0.0, 0.0, 0.0), Point(1.0, 2.0, 1.0), N, 2*N, N)
+    mesh = BoxMesh(Point(0.0, 1.0, 0.0), Point(1.0, 2.0, 1.0), N, N, N)
     subdomains = MeshFunction("size_t", mesh, dim)
     subdomains.set_all(0)
     boundaries = MeshFunction("size_t", mesh, dim-1)
@@ -158,17 +148,9 @@ for ii in range(1,6):
         def inside(self, x, on_boundary):
             return (between(x[1], (0.0, 1.0)) and on_boundary)
 
-    class Bot(SubDomain):
-        def inside(self, x, on_boundary):
-            return (near(x[1], 0.0) and on_boundary)
-
     class MStokes(SubDomain):
         def inside(self, x, on_boundary):
             return x[1] >= 1.
-
-    class MPoroel(SubDomain):
-        def inside(self, x, on_boundary):
-            return x[1] <= 1.
 
     class Interface(SubDomain):
         def inside(self, x, on_boundary):
@@ -179,21 +161,17 @@ for ii in range(1,6):
     def tensor_jump_b(u, n):
         return  outer(u, n)/2 + outer(n, u)/2
 
-    MPoroel().mark(subdomains, poroel)
     MStokes().mark(subdomains, stokes)
     Interface().mark(boundaries, interf)
 
     Top().mark(boundaries, neuSTop)
     SLateral().mark(boundaries, dirS)
-    PLateral().mark(boundaries, dirP)
-    Bot().mark(boundaries, dirP)
 
     n = FacetNormal(mesh)
 
     # ******* Set subdomains, boundaries, and interface ****** #
 
     OmS = MeshRestriction(mesh, MStokes())
-    OmP = MeshRestriction(mesh, MPoroel())
     Sig = MeshRestriction(mesh, Interface())
 
     dx = Measure("dx", domain=mesh, subdomain_data=subdomains)
@@ -201,28 +179,22 @@ for ii in range(1,6):
     dS = Measure("dS", domain=mesh, subdomain_data=boundaries)
 
     # verifying the domain size
-    volumeP = assemble(1.*dx(poroel))
     volumeS = assemble(1.*dx(stokes))
-    areaI = assemble(1.*dS(interf))
-    print("volume(Omega_P) = ", volumeP)
     print("volume(Omega_S) = ", volumeS)
-    print("area(Sigma) = ", areaI)
-    
+
     # ***** Global FE spaces and their restrictions ****** #
 
     P2v = VectorFunctionSpace(mesh, "DG", deg)
     P1 = FunctionSpace(mesh, "DG", degP)
-    BDM1 = VectorFunctionSpace(mesh, "DG", deg)
-    P0 = FunctionSpace(mesh, "DG", degP)
 
-    #                         uS,   uP, pS, pP
-    Hh = BlockFunctionSpace([P2v, BDM1, P1, P0],
-                            restrict=[OmS, OmP, OmS, OmP])
+    #                         uS, pS
+    Hh = BlockFunctionSpace([P2v, P1],
+                            restrict=[OmS, OmS])
 
     trial = BlockTrialFunction(Hh)
-    uS, uP, pS, pP = block_split(trial)
+    uS, pS = block_split(trial)
     test = BlockTestFunction(Hh)
-    vS, vP, qS, qP = block_split(test)
+    vS, qS = block_split(test)
 
     print("DoFs = ", Hh.dim(), " -- DoFs with unified Taylor-Hood = ", P2v.dim() + P1.dim())
 
@@ -255,69 +227,23 @@ for ii in range(1,6):
 
     SS = eta*h_avg_S/degP * inner(jump(pS,n), jump(qS,n)) * dS(0)
 
-    AP = (2*G*inner(sym(grad(uP)),sym(grad(vP)))*dx(poroel)) + (l*div(uP)*div(vP)*dx(poroel)) \
-         + ((2*l+5*G)*etaU*deg*deg/h_avg*inner(tensor_jump(uP,n),tensor_jump(vP,n))*dS(0)) \
-         - (2*G*inner(avg(sym(grad(uP))), tensor_jump(vP,n))*dS(0)) - (2*G*inner(avg(sym(grad(vP))), tensor_jump(uP,n))*dS(0)) \
-         - (l*avg(div(uP))*jump(vP,n)*dS(0)) - (l*avg(div(vP))*jump(uP,n)*dS(0)) \
-         + ((2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(uP,n), tensor_jump_b(vP,n))*ds(dirP)) \
-         - (2*G*inner(sym(grad(uP)), tensor_jump_b(vP,n)) * ds(dirP)) \
-         - (2*G*inner(sym(grad(vP)), tensor_jump_b(uP,n)) * ds(dirP)) \
-         - (l*div(uP)*inner(vP,n)*ds(dirP)) - (l*div(vP)*inner(uP,n)*ds(dirP))
-
-    SP = (Kval/G*inner(grad(pP),grad(qP))*dx(poroel)) \
-         + beta*pP*qP*dx(poroel) \
-         + (KvalCorr/G*eta*degP*degP/h_avg_S*inner(jump(pP,n),jump(qP,n))*dS(0)) \
-         - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
-         - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
-         + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
-         - (Kval/G*inner(grad(pP('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP('+')*dS(interf))
-
-    JSt = pP('+') * dot(vS('-'), n('-')) * dS(interf)
-    JS = qP('+') * dot(uS('-'), n('+')) * dS(interf)
-    #NO IN STEADY# JP = - qP('-') * dot(uP('-'), n('-')) * dS(interf)
-    JPt = pP('-') * dot(vP('-'), n('-')) * dS(interf)
-
-    B1Pt = - alpha * pP * div(vP) * dx(poroel) \
-           + alpha * jump(vP,n) * avg(pP) * dS(0) \
-           + alpha * inner(vP,n) * pP * ds(dirP) \
-           + JPt
-
-    # NB In the STEADY case, the coupling pP->uP is one-directional
-    B1P = 0#NO IN STEADY# JP #\
-          #NO IN STEADY# + alpha * qP * div(uP) * dx(poroel) \
-          #NO IN STEADY# - alpha * jump(uP,n) * avg(qP) * dS(0) \
-          #NO IN STEADY# - alpha * inner(uP,n) * qP * ds(dirP)
-
     FuS = dot(fS, vS) * dx(stokes) \
           + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS_ex,n),tensor_jump_b(vS,n))*ds(dirS)) \
           - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS_ex,n))*ds(dirS)) \
-          + inner(gNeuSTop, vS) * ds(neuSTop) # \
-          #THIS SEEMS TO REPLACE JSt (and quite precisely, especially in terms of uS,pS,uP)#  + inner(gNeuS, vS('+')) * dS(interf)
-
-    FuP = dot(fP, vP) * dx(poroel) \
-          + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(dP_ex,n),tensor_jump_b(vP,n))*ds(dirP) \
-          - 2*G*inner(sym(grad(vP)), tensor_jump_b(dP_ex,n))*ds(dirP) \
-          - l*div(vP)*inner(dP_ex,n)*ds(dirP)
+          + inner(gNeuSTop, vS) * ds(neuSTop) \
+          + inner(gNeuS, vS) * ds(interf)
 
     GqS = gS*qS * dx(stokes) \
           - inner(uS_ex,n) * qS * ds(dirS)
 
-    GqP = gP*qP * dx(poroel) \
-          + (KvalCorr/G*eta*degP*degP/h*pP_ex*qP*ds(dirP)) \
-          - (Kval/G*pP_ex*inner(grad(qP),n)*ds(dirP)) \
-          - (Kval/G*pP_ex*inner(grad(qP('+')),n('+'))*dS(interf)) #\
-          #NO IN STEADY# - alpha * inner(dP_ex,n) * qP * ds(dirP)
-
     # ****** Assembly and solution of linear system ******** #
 
-    rhs = [FuS, FuP, GqS, GqP]
+    rhs = [FuS, GqS]
 
     # this can be ordered arbitrarily. I've chosen
-    #        uS   uP    pS    pP
-    lhs = [[ AS,   0, B1St,  JSt],
-           [  0,  AP,    0, B1Pt],
-           [B1S,   0,   SS,    0],
-           [ JS, B1P,    0,   SP]]
+    #        uS   pS
+    lhs = [[ AS, B1St],
+           [B1S,   SS]]
 
     AA = block_assemble(lhs)
     FF = block_assemble(rhs)
@@ -326,52 +252,33 @@ for ii in range(1,6):
 
     sol = BlockFunction(Hh)
     block_solve(AA, sol.block_vector(), FF, "mumps")
-    uS_h, uP_h, pS_h, pP_h = block_split(sol)
-    # assert isclose(uS_h.vector().norm("l2"), 73.54915)
-    # assert isclose(uP_h.vector().norm("l2"), 2.713143)
-    # assert isclose(pS_h.vector().norm("l2"), 175.4097)
-    # assert isclose(pP_h.vector().norm("l2"), 54.45552)
-    print(uS_h.vector().norm("l2"), [1709.466 if deg==2 else 1209.399])
-    print(pS_h.vector().norm("l2"), [5648.087 if deg==2 else 5651.009])
-    print(uP_h.vector().norm("l2"), [86.59258])
-    print(pP_h.vector().norm("l2"), [272.1546])
+    uS_h, pS_h = block_split(sol)
+    print(uS_h.vector().norm("l2"), [1709.466 if deg==2 else 1209.642])
+    print(pS_h.vector().norm("l2"), [5648.086 if deg==2 else 5649.805])
 
     # ****** Computing error ******** #
     
-    form_err_uS_L2 = inner(uS_h - uS_ex, uS_h - uS_ex) * dx(stokes)
-    form_err_uS_H10 = inner(sym(grad(uS_h)) - symgrad_uS_ex, sym(grad(uS_h)) - symgrad_uS_ex) * dx(stokes)
-    form_err_pS_L2 = (pS_h - pS_ex)*(pS_h - pS_ex) * dx(stokes)
-    form_err_uP_L2 = inner(uP_h - dP_ex, uP_h - dP_ex) * dx(poroel)
-    form_err_uP_H10 = inner(sym(grad(uP_h)) - symgrad_dP_ex, sym(grad(uP_h)) - symgrad_dP_ex) * dx(poroel)
-    form_err_pP_L2 = (pP_h - pP_ex)*(pP_h - pP_ex) * dx(poroel)
-    form_err_pP_H10 = inner(grad(pP_h) - grad_pP_ex, grad(pP_h) - grad_pP_ex) * dx(poroel)
-    err_uS_L2 = sqrt(assemble(form_err_uS_L2))
-    err_uS_H10 = sqrt(assemble(form_err_uS_H10))
-    err_pS_L2 = sqrt(assemble(form_err_pS_L2))
-    err_uP_L2 = sqrt(assemble(form_err_uP_L2))
-    err_uP_H10 = sqrt(assemble(form_err_uP_H10))
-    err_pP_L2 = sqrt(assemble(form_err_pP_L2))
-    err_pP_H10 = sqrt(assemble(form_err_pP_H10))
-    print("Errors: Stokes : uL2: ", err_uS_L2, "  uH10: ", err_uS_H10, "  pL2: ", err_pS_L2)
-    print("        poroel : uL2: ", err_uP_L2, "  uH10: ", err_uP_H10, "  pL2: ", err_pP_L2, "  pH10: ", err_pP_H10)
+    form_err_u_L2 = inner(uS_h - uS_ex, uS_h - uS_ex) * dx(stokes)
+    form_err_u_H10 = inner(sym(grad(uS_h)) - symgrad_uS_ex, sym(grad(uS_h)) - symgrad_uS_ex) * dx(stokes)
+    form_err_p_L2 = (pS_h - pS_ex)*(pS_h - pS_ex) * dx(stokes)
+    err_u_L2 = sqrt(assemble(form_err_u_L2))
+    err_u_H10 = sqrt(assemble(form_err_u_H10))
+    err_p_L2 = sqrt(assemble(form_err_p_L2))
+    print("Errors: uL2: ", err_u_L2, "  uH10: ", err_u_H10, "  pL2: ", err_p_L2)
 
     # ****** Saving data ******** #
 
     uS_h.rename("uS", "uS")
     pS_h.rename("pS", "pS")
-    uP_h.rename("uP", "uP")
-    pP_h.rename("pP", "pP")
 
     output = XDMFFile(outputPath+'/'+outputFileBasename+"_"+str(ii)+".xdmf")
     output.parameters["rewrite_function_mesh"] = False
     output.parameters["functions_share_mesh"] = True
     output.write(uS_h, 0.0)
     output.write(pS_h, 0.0)
-    output.write(uP_h, 0.0)
-    output.write(pP_h, 0.0)
     output.close()
 
     with open(outputPath+'/'+outputFileBasename+'.csv', 'a', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',',
                                quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        csvwriter.writerow([1.0/N, err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10])
+        csvwriter.writerow([1.0/N, err_u_L2, err_u_H10, err_p_L2])
