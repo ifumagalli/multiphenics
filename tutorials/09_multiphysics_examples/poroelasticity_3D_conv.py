@@ -22,19 +22,9 @@ import csv
 import os
 
 """
-3D Steady Stokes-Poroelasticity problem.
-
-uS: Stokes velocity in H^1(OmS)
+3D Poroelasticity problem with 1 fluid compartment.
 uP: Poroelastic displacement in H^1(OmP)
-pS: Stokes pressure in L^2(OmS)
 pP: Poroelastic pressure in L^2(OmP)
-
-transmission conditions:
-
-uS.nS = (K/G)grad(pP).nP
--(2*mu*eps(uS)-pS*I)*nS.nS = pP
--(2*mu*eps(uS)-pS*I)*tS.nS = 0
--(2*G*eps(uP)+l*div(uP)*I + alpha*p*I)*nP -(2*mu*eps(uS)-pS*I)*nS = 0
 """
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
@@ -42,7 +32,7 @@ parameters["ghost_mode"] = "shared_facet"  # required by dS
 # ********* I/O parameters  ******* #
 
 outputPath = "output"
-outputFileBasename = "stokes_poroelasticity_3D_conv"
+outputFileBasename = "poroelasticity_3D_conv"
 
 if not os.path.exists(outputPath):
     os.makedirs(outputPath)
@@ -130,7 +120,7 @@ neuSTop = 20
 with open(outputPath+'/'+outputFileBasename+'.csv', 'w', newline='') as csvfile:
     csvwriter = csv.writer(csvfile, delimiter=',',
                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
-    csvwriter.writerow(["h", "err_uS_L2", "err_uS_H10", "err_pS_L2", "err_uP_L2", "err_uP_H10", "err_pP_L2", "err_pP_H10"])
+    csvwriter.writerow(["h", "err_u_L2", "err_u_H10", "err_p_L2", "err_p_H10"])
 
 for ii in range(1,6):
 
@@ -140,31 +130,19 @@ for ii in range(1,6):
     # ******* Set subdomains, boundaries, and interface ****** #
 
     dim = 3
-    mesh = BoxMesh(Point(0.0, 0.0, 0.0), Point(1.0, 2.0, 1.0), N, 2*N, N)
+    mesh = BoxMesh(Point(0.0, 0.0, 0.0), Point(1.0, 1.0, 1.0), N, N, N)
     subdomains = MeshFunction("size_t", mesh, dim)
     subdomains.set_all(0)
     boundaries = MeshFunction("size_t", mesh, dim-1)
     boundaries.set_all(0)
 
-    class Top(SubDomain):
-        def inside(self, x, on_boundary):
-            return (near(x[1], 2.0) and on_boundary)
-
-    class SLateral(SubDomain):
-        def inside(self, x, on_boundary):
-            return (between(x[1], (1.0, 2.0)) and on_boundary)
-
-    class PLateral(SubDomain):
-        def inside(self, x, on_boundary):
-            return (between(x[1], (0.0, 1.0)) and on_boundary)
-
     class Bot(SubDomain):
         def inside(self, x, on_boundary):
             return (near(x[1], 0.0) and on_boundary)
 
-    class MStokes(SubDomain):
+    class PLateral(SubDomain):
         def inside(self, x, on_boundary):
-            return x[1] >= 1.
+            return (between(x[1], (0.0, 1.0)) and on_boundary)
 
     class MPoroel(SubDomain):
         def inside(self, x, on_boundary):
@@ -180,19 +158,15 @@ for ii in range(1,6):
         return  outer(u, n)/2 + outer(n, u)/2
 
     MPoroel().mark(subdomains, poroel)
-    MStokes().mark(subdomains, stokes)
     Interface().mark(boundaries, interf)
 
-    Top().mark(boundaries, neuSTop)
-    SLateral().mark(boundaries, dirS)
-    PLateral().mark(boundaries, dirP)
     Bot().mark(boundaries, dirP)
+    PLateral().mark(boundaries, dirP)
 
     n = FacetNormal(mesh)
 
     # ******* Set subdomains, boundaries, and interface ****** #
 
-    OmS = MeshRestriction(mesh, MStokes())
     OmP = MeshRestriction(mesh, MPoroel())
     Sig = MeshRestriction(mesh, Interface())
 
@@ -202,29 +176,23 @@ for ii in range(1,6):
 
     # verifying the domain size
     volumeP = assemble(1.*dx(poroel))
-    volumeS = assemble(1.*dx(stokes))
-    areaI = assemble(1.*dS(interf))
     print("volume(Omega_P) = ", volumeP)
-    print("volume(Omega_S) = ", volumeS)
-    print("area(Sigma) = ", areaI)
-    
+
     # ***** Global FE spaces and their restrictions ****** #
 
-    P2v = VectorFunctionSpace(mesh, "DG", deg)
-    P1 = FunctionSpace(mesh, "DG", degP)
     BDM1 = VectorFunctionSpace(mesh, "DG", deg)
     P0 = FunctionSpace(mesh, "DG", degP)
 
-    #                         uS,   uP, pS, pP
-    Hh = BlockFunctionSpace([P2v, BDM1, P1, P0],
-                            restrict=[OmS, OmP, OmS, OmP])
+    #                          uP, pP
+    Hh = BlockFunctionSpace([BDM1, P0],
+                            restrict=[OmP, OmP])
 
     trial = BlockTrialFunction(Hh)
-    uS, uP, pS, pP = block_split(trial)
+    uP, pP = block_split(trial)
     test = BlockTestFunction(Hh)
-    vS, vP, qS, qP = block_split(test)
+    vP, qP = block_split(test)
 
-    print("DoFs = ", Hh.dim(), " -- DoFs with unified Taylor-Hood = ", P2v.dim() + P1.dim())
+    print("DoFs = ", Hh.dim(), " -- DoFs with unified Taylor-Hood = ", BDM1.dim() + P0.dim())
 
 
     # ******** Other parameters and BCs ************* #
@@ -238,22 +206,6 @@ for ii in range(1,6):
     n = FacetNormal(mesh)
     h_avg_S = (h('+')+h('-')-abs(h('+')-h('-')))/2
 
-    AS = 2.0 * mu * inner(sym(grad(uS)), sym(grad(vS))) * dx(stokes) \
-         + (mu*etaU*deg*deg/h_avg*inner(tensor_jump(uS,n),tensor_jump(vS,n))*dS(0)) \
-         - (2*mu*inner(avg(sym(grad(uS))), tensor_jump(vS,n))*dS(0)) - (2*mu*inner(avg(sym(grad(vS))), tensor_jump(uS,n))*dS(0)) \
-         + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS,n), tensor_jump_b(vS,n))*ds(dirS)) \
-         - (2*mu*inner(sym(grad(uS)), tensor_jump_b(vS,n))*ds(dirS)) \
-         - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS,n))*ds(dirS))
-
-    B1St = - pS * div(vS) * dx(stokes) \
-           + jump(vS,n) * avg(pS) * dS(0) \
-           + inner(vS,n) * pS * ds(dirS)
-
-    B1S = qS * div(uS) * dx(stokes) \
-           - jump(uS,n) * avg(qS) * dS(0) \
-           - inner(uS,n) * qS * ds(dirS)
-
-    SS = eta*h_avg_S/degP * inner(jump(pS,n), jump(qS,n)) * dS(0)
 
     AP = (2*G*inner(sym(grad(uP)),sym(grad(vP)))*dx(poroel)) + (l*div(uP)*div(vP)*dx(poroel)) \
          + ((2*l+5*G)*etaU*deg*deg/h_avg*inner(tensor_jump(uP,n),tensor_jump(vP,n))*dS(0)) \
@@ -270,8 +222,7 @@ for ii in range(1,6):
          - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
          - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
          + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
-         - (Kval/G*inner(grad(pP('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP('+')*dS(interf)) \
-         + (KvalCorr/G*eta*degP*degP/h_avg_S*pP('+')*qP('+')*dS(interf))
+         - (Kval/G*inner(grad(pP('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP('+')*dS(interf))
 
     JSt = pP('+') * dot(vS('-'), n('-')) * dS(interf)
     JS = qP('+') * dot(uS('-'), n('+')) * dS(interf)

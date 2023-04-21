@@ -35,7 +35,6 @@ uS.nS = (K/G)grad(pP).nP
 -(2*mu*eps(uS)-pS*I)*nS.nS = pP
 -(2*mu*eps(uS)-pS*I)*tS.nS = 0
 -(2*G*eps(uP)+l*div(uP)*I + alpha*p*I)*nP -(2*mu*eps(uS)-pS*I)*nS = 0
-
 """
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
@@ -123,7 +122,7 @@ with open(outputPath+'/'+outputFileBasename+'.csv', 'w', newline='') as csvfile:
                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
     csvwriter.writerow(["h", "err_uS_L2", "err_uS_H10", "err_pS_L2", "err_uP_L2", "err_uP_H10", "err_pP_L2", "err_pP_H10"])
 
-for ii in range(1,6):
+for ii in range(1,7):
 
     N = 5*(2**ii)
     print("h = ", 1.0/N)
@@ -271,7 +270,8 @@ for ii in range(1,6):
          - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
          - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
          + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
-         - (Kval/G*inner(grad(pP('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP('+')*dS(interf))
+         - (Kval/G*inner(grad(pP('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP('+')*dS(interf)) \
+         + (KvalCorr/G*eta*degP*degP/h_avg_S*pP('+')*qP('+')*dS(interf))
 
     JSt = pP('+') * dot(vS('-'), n('-')) * dS(interf)
     JS = qP('+') * dot(uS('-'), n('+')) * dS(interf)

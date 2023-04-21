@@ -211,7 +211,7 @@ for ii in range(1,5):
          - (2*G*inner(sym(grad(uP)), tensor_jump_b(vP,n)) * ds(dirP)) \
          - (2*G*inner(sym(grad(vP)), tensor_jump_b(uP,n)) * ds(dirP)) \
          - (l*div(uP)*inner(vP,n)*ds(dirP)) - (l*div(vP)*inner(uP,n)*ds(dirP))
-    
+
     SP = (Kval/G*inner(grad(pP),grad(qP))*dx(poroel)) \
          + beta*pP*qP*dx(poroel) \
          + (KvalCorr/G*eta*degP*degP/h_avg_S*inner(jump(pP,n),jump(qP,n))*dS(0)) \
@@ -220,7 +220,7 @@ for ii in range(1,5):
          + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
          - (Kval/G*inner(grad(pP),n)*qP*ds(interf)) - (Kval/G*inner(grad(qP),n)*pP*ds(interf)) \
          + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(interf))
-    
+
     B1Pt = - alpha * pP * div(vP) * dx(poroel) \
            + alpha * jump(vP,n) * avg(pP) * dS(0) \
            + alpha * inner(vP,n) * pP * ds(dirP)
@@ -229,7 +229,7 @@ for ii in range(1,5):
     B1P = 0#NO IN STEADY# + alpha * qP * div(uP) * dx(poroel) \
           #NO IN STEADY# - alpha * jump(uP,n) * avg(qP) * dS(0) \
           #NO IN STEADY# - alpha * inner(uP,n) * qP * ds(dirP)
-    
+
     FuP = dot(fP, vP) * dx(poroel) \
           + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(dP_ex,n),tensor_jump_b(vP,n))*ds(dirP) \
           - 2*G*inner(sym(grad(vP)), tensor_jump_b(dP_ex,n))*ds(dirP) \
