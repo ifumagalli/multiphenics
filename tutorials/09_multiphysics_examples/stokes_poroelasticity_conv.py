@@ -268,10 +268,10 @@ for ii in range(1,7):
          + beta*pP*qP*dx(poroel) \
          + (KvalCorr/G*eta*degP*degP/h_avg_S*inner(jump(pP,n),jump(qP,n))*dS(0)) \
          - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
-         - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
          + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
-         - (Kval/G*inner(grad(pP('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP('+')*dS(interf)) \
-         + (KvalCorr/G*eta*degP*degP/h_avg_S*pP('+')*qP('+')*dS(interf))
+         - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
+         + (KvalCorr/G*eta*degP*degP/h('+')*pP('+')*qP('+')*dS(interf)) \
+         - (Kval/G*inner(grad(pP('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP('+')*dS(interf))
 
     JSt = pP('+') * dot(vS('-'), n('-')) * dS(interf)
     JS = qP('+') * dot(uS('-'), n('+')) * dS(interf)
