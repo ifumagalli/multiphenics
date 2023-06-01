@@ -91,6 +91,10 @@ def postprocess(sol, conv_idx, time_idx, outputPath, outputFileBasename, err_uS_
                                quotechar='|', quoting=csv.QUOTE_MINIMAL)
         csvwriter.writerow([1.0/N, time, err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10])
 
+# ********************************* #
+# ************** MAIN ************* #
+# ********************************* #
+
 parameters["ghost_mode"] = "shared_facet"  # required by dS
 
 # ********* I/O parameters  ******* #
@@ -118,9 +122,9 @@ beta = Constant(beta_)
 alpha_ = 1.+2*G_+2*l_
 alpha = Constant(alpha_)
 
-rhoP = 0
-cP = 0
-rhoS = 0
+rhoP = 1
+cP = 1
+rhoS = 1
 
 t0 = 0
 tmax = 1e-4
@@ -133,8 +137,10 @@ etaU = Constant(10)
 eta = Constant(10)
 
 dt = 1e-5
-newmarkBeta = Constant(0.25)
-newmarkGamma = Constant(0.5)
+newmarkBeta_ = 0.25
+newmarkBeta = Constant(newmarkBeta_)
+newmarkGamma_ = 0.5
+newmarkGamma = Constant(newmarkGamma_)
 theta = Constant(1.0)
 
 # ******* Exact solution, initial condition, and sources ****** #
@@ -322,174 +328,12 @@ for ii in range(1,7):
 
     # ******** Other parameters and BCs ************* #
 
-    # no BCs: imposed by DG
-
-    # ********  Define weak forms ********** #
-
     h = CellDiameter(mesh)
     h_avg = (2*h('+')*h('-'))/(h('+')+h('-'))
     n = FacetNormal(mesh)
     h_avg_S = (h('+')+h('-')-abs(h('+')-h('-')))/2
 
-    AS = rhoS/dt * inner(uS,vS) * dx(stokes) \
-         + theta*(\
-         2.0 * mu * inner(sym(grad(uS)), sym(grad(vS))) * dx(stokes) \
-         + (mu*etaU*deg*deg/h_avg*inner(tensor_jump(uS,n),tensor_jump(vS,n))*dS(0)) \
-         - (2*mu*inner(avg(sym(grad(uS))), tensor_jump(vS,n))*dS(0)) - (2*mu*inner(avg(sym(grad(vS))), tensor_jump(uS,n))*dS(0)) \
-         + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS,n), tensor_jump_b(vS,n))*ds(dirS)) \
-         - (2*mu*inner(sym(grad(uS)), tensor_jump_b(vS,n))*ds(dirS)) \
-         - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS,n))*ds(dirS)) \
-         )
-
-    B1St = theta*(\
-           - pS * div(vS) * dx(stokes) \
-           + jump(vS,n) * avg(pS) * dS(0) \
-           + inner(vS,n) * pS * ds(dirS) \
-           )
-
-    B1S = theta*(\
-           qS * div(uS) * dx(stokes) \
-           - jump(uS,n) * avg(qS) * dS(0) \
-           - inner(uS,n) * qS * ds(dirS) \
-           )
-
-    SS = eta*h_avg_S/degP * inner(jump(pS,n), jump(qS,n)) * dS(0)
-
-    AP = rhoP/(newmarkBeta*dt*dt) * inner(uP,vP) * dx(poroel) \
-         + (2*G*inner(sym(grad(uP)),sym(grad(vP)))*dx(poroel)) + (l*div(uP)*div(vP)*dx(poroel)) \
-         + ((2*l+5*G)*etaU*deg*deg/h_avg*inner(tensor_jump(uP,n),tensor_jump(vP,n))*dS(0)) \
-         - (2*G*inner(avg(sym(grad(uP))), tensor_jump(vP,n))*dS(0)) - (2*G*inner(avg(sym(grad(vP))), tensor_jump(uP,n))*dS(0)) \
-         - (l*avg(div(uP))*jump(vP,n)*dS(0)) - (l*avg(div(vP))*jump(uP,n)*dS(0)) \
-         + ((2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(uP,n), tensor_jump_b(vP,n))*ds(dirP)) \
-         - (2*G*inner(sym(grad(uP)), tensor_jump_b(vP,n)) * ds(dirP)) \
-         - (2*G*inner(sym(grad(vP)), tensor_jump_b(uP,n)) * ds(dirP)) \
-         - (l*div(uP)*inner(vP,n)*ds(dirP)) - (l*div(vP)*inner(uP,n)*ds(dirP))
-
-    SP = cP/dt * pP * qP * dx(poroel) \
-         + theta*( \
-         (Kval/G*inner(grad(pP),grad(qP))*dx(poroel)) \
-         + beta*pP*qP*dx(poroel) \
-         + (KvalCorr/G*eta*degP*degP/h_avg_S*inner(jump(pP,n),jump(qP,n))*dS(0)) \
-         - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
-         + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
-         - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
-         + (KvalCorr/G*eta*degP*degP/h('+')*pP('+')*qP('+')*dS(interf)) \
-         - (Kval/G*inner(grad(pP('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP('+')*dS(interf)) \
-         )
-
-    JSt = pP('+') * dot(vS('-'), n('-')) * dS(interf)
-    JS = qP('+') * dot(uS('-'), n('+')) * dS(interf)
-    JPt = pP('-') * dot(vP('-'), n('-')) * dS(interf)
-    # JP: use Newmark extrap to approx \dot{d} in the eq for pP
-    JP = theta*newmarkGamma/(newmarkBeta*dt) * qP('+') * dot(uP('+'), n('+')) * dS(interf)
-
-    B1Pt = - alpha * pP * div(vP) * dx(poroel) \
-           + alpha * jump(vP,n) * avg(pP) * dS(0) \
-           + alpha * inner(vP,n) * pP * ds(dirP) \
-           + JPt
-
-    # NB In the STEADY case, the coupling pP->uP is one-directional
-    # @TODO: why should it be 0 in the time-dep case??
-    B1P = 0
-    # B1P = theta*newmarkGamma/(newmarkBeta*dt) * ( \
-    #       alpha * qP * div(uP) * dx(poroel) \
-    #       - alpha * jump(uP,n) * avg(qP) * dS(0) \
-    #       - alpha * inner(uP,n) * qP * ds(dirP) \
-    #       ) \
-    #       + JP
-
-    FuS = rhoS/dt * inner(uS_OLD,vS) * dx(stokes) \
-          - (1-theta)*( \
-          2.0 * mu * inner(sym(grad(uS_OLD)), sym(grad(vS))) * dx(stokes) \
-          + (mu*etaU*deg*deg/h_avg*inner(tensor_jump(uS_OLD,n),tensor_jump(vS,n))*dS(0)) \
-          - (2*mu*inner(avg(sym(grad(uS_OLD))), tensor_jump(vS,n))*dS(0)) - (2*mu*inner(avg(sym(grad(vS))), tensor_jump(uS_OLD,n))*dS(0)) \
-          + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS_OLD,n), tensor_jump_b(vS,n))*ds(dirS)) \
-          - (2*mu*inner(sym(grad(uS_OLD)), tensor_jump_b(vS,n))*ds(dirS)) \
-          - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS_OLD,n))*ds(dirS)) \
-          ) \
-          - (1-theta)*( \
-          -pS_OLD * div(vS) * dx(stokes) \
-          + jump(vS,n) * avg(pS_OLD) * dS(0) \
-          + inner(vS,n) * pS_OLD * ds(dirS) \
-          ) \
-          + theta * ( \
-          dot(fS, vS) * dx(stokes) \
-          + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS_ex,n),tensor_jump_b(vS,n))*ds(dirS)) \
-          - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS_ex,n))*ds(dirS)) \
-          + inner(gNeuSTop, vS) * ds(neuSTop) \
-          ) \
-          + (1-theta) * ( \
-          + dot(fS_OLD, vS) * dx(stokes) \
-          + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS_ex_OLD,n),tensor_jump_b(vS,n))*ds(dirS)) \
-          - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS_ex_OLD,n))*ds(dirS)) \
-          + inner(gNeuSTop_OLD, vS) * ds(neuSTop) \
-          )
-          #THIS SEEMS TO REPLACE JSt (and quite precisely, especially in terms of uS,pS,uP)#  + inner(gNeuS, vS('+')) * dS(interf)
-
-    FuP = rhoP/(newmarkBeta*dt*dt) * inner(uP_OLD,vP) * dx(poroel) \
-          + rhoP/(newmarkBeta*dt) * inner(zP_OLD,vP) * dx(poroel) \
-          + rhoP*(1.0-2*newmarkBeta)/(2*newmarkBeta) * inner(aP_OLD,vP) * dx(poroel) \
-          + dot(fP, vP) * dx(poroel) \
-          + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(dP_ex,n),tensor_jump_b(vP,n))*ds(dirP) \
-          - 2*G*inner(sym(grad(vP)), tensor_jump_b(dP_ex,n))*ds(dirP) \
-          - l*div(vP)*inner(dP_ex,n)*ds(dirP)
-
-    GqS = -(1-theta)*(
-          qS * div(uS_OLD) * dx(stokes) \
-          - jump(uS_OLD,n) * avg(qS) * dS(0) \
-          - inner(uS_ex_OLD,n) * qS * ds(dirS) \
-          + eta*h_avg_S/degP * inner(jump(pS_OLD,n),jump(qS,n)) * dS(0) \
-          ) \
-          + theta*( \
-          gS*qS * dx(stokes) \
-          - inner(uS_ex,n) * qS * ds(dirS) \
-          ) \
-          + (1-theta)*( \
-          gS_OLD*qS * dx(stokes) \
-          - inner(uS_ex_OLD,n) * qS * ds(dirS) \
-          )
-
-    GqP = cP/dt * pP_OLD * qP * dx(poroel) \
-          - (1-theta)*( \
-          (Kval/G*inner(grad(pP_OLD),grad(qP))*dx(poroel)) \
-          + beta*pP_OLD*qP*dx(poroel) \
-          + (KvalCorr/G*eta*degP*degP/h_avg_S*inner(jump(pP_OLD,n),jump(qP,n))*dS(0)) \
-          - (Kval/G*inner(avg(grad(pP_OLD)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP_OLD,n))*dS(0)) \
-          + (KvalCorr/G*eta*degP*degP/h*pP_OLD*qP*ds(dirP)) \
-          - (Kval/G*inner(grad(pP_OLD),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP_OLD*ds(dirP)) \
-          + (KvalCorr/G*eta*degP*degP/h('+')*pP_OLD('+')*qP('+')*dS(interf)) \
-          - (Kval/G*inner(grad(pP_OLD('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP_OLD('+')*dS(interf)) \
-          ) \
-          + theta*( \
-          gP*qP * dx(poroel) \
-          + (KvalCorr/G*eta*degP*degP/h*pP_ex*qP*ds(dirP)) \
-          - (Kval/G*pP_ex*inner(grad(qP),n)*ds(dirP)) \
-          - (Kval/G*pP_ex*inner(grad(qP('+')),n('+'))*dS(interf)) \
-          ) \
-          + (1-theta)*( \
-          gP_OLD*qP * dx(poroel) \
-          + (KvalCorr/G*eta*degP*degP/h*pP_ex_OLD*qP*ds(dirP)) \
-          - (Kval/G*pP_ex_OLD*inner(grad(qP),n)*ds(dirP)) \
-          - (Kval/G*pP_ex_OLD*inner(grad(qP('+')),n('+'))*dS(interf)) \
-          ) \
-          - theta*newmarkGamma/(newmarkBeta*dt) * ( \
-          alpha * qP * div(uP_OLD) * dx(poroel) \
-          + alpha * jump(uP_OLD,n) * avg(qP) * dS(0) \
-          + alpha * inner(uP_OLD,n) * qP * ds(dirP) \
-          ) \
-          - (theta*newmarkGamma/newmarkBeta - 1) * ( \
-          alpha * qP * div(zP_OLD) * dx(poroel) \
-          + alpha * jump(zP_OLD,n) * avg(qP) * dS(0) \
-          + alpha * inner(zP_OLD,n) * qP * ds(dirP) \
-          ) \
-          - theta*(newmarkGamma/(2*newmarkBeta) - 1)*dt * ( \
-          alpha * qP * div(aP_OLD) * dx(poroel) \
-          + alpha * jump(aP_OLD,n) * avg(qP) * dS(0) \
-          + alpha * inner(aP_OLD,n) * qP * ds(dirP) \
-          ) \
-          - theta*newmarkGamma/(newmarkBeta*dt) * alpha * inner(dP_ex,n) * qP * ds(dirP) \
-          + theta*newmarkGamma/(newmarkBeta*dt) * alpha * inner(dP_ex_OLD,n) * qP * ds(dirP)
-
+    # no BCs: imposed by DG
 
     # ****** Initial conditions ******** #
 
@@ -523,6 +367,174 @@ for ii in range(1,7):
         time = time + dt
         print("Time t = ", time)
 
+        # ****** (Re-)define weak forms ******** #
+
+        AS = rhoS/dt * inner(uS,vS) * dx(stokes) \
+             + theta*(\
+             2.0 * mu * inner(sym(grad(uS)), sym(grad(vS))) * dx(stokes) \
+             + (mu*etaU*deg*deg/h_avg*inner(tensor_jump(uS,n),tensor_jump(vS,n))*dS(0)) \
+             - (2*mu*inner(avg(sym(grad(uS))), tensor_jump(vS,n))*dS(0)) - (2*mu*inner(avg(sym(grad(vS))), tensor_jump(uS,n))*dS(0)) \
+             + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS,n), tensor_jump_b(vS,n))*ds(dirS)) \
+             - (2*mu*inner(sym(grad(uS)), tensor_jump_b(vS,n))*ds(dirS)) \
+             - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS,n))*ds(dirS)) \
+             )
+
+        B1St = theta*(\
+               - pS * div(vS) * dx(stokes) \
+               + jump(vS,n) * avg(pS) * dS(0) \
+               + inner(vS,n) * pS * ds(dirS) \
+               )
+
+        B1S = theta*(\
+               qS * div(uS) * dx(stokes) \
+               - jump(uS,n) * avg(qS) * dS(0) \
+               - inner(uS,n) * qS * ds(dirS) \
+               )
+
+        SS = eta*h_avg_S/degP * inner(jump(pS,n), jump(qS,n)) * dS(0)
+
+        AP = rhoP/(newmarkBeta*dt*dt) * inner(uP,vP) * dx(poroel) \
+             + (2*G*inner(sym(grad(uP)),sym(grad(vP)))*dx(poroel)) + (l*div(uP)*div(vP)*dx(poroel)) \
+             + ((2*l+5*G)*etaU*deg*deg/h_avg*inner(tensor_jump(uP,n),tensor_jump(vP,n))*dS(0)) \
+             - (2*G*inner(avg(sym(grad(uP))), tensor_jump(vP,n))*dS(0)) - (2*G*inner(avg(sym(grad(vP))), tensor_jump(uP,n))*dS(0)) \
+             - (l*avg(div(uP))*jump(vP,n)*dS(0)) - (l*avg(div(vP))*jump(uP,n)*dS(0)) \
+             + ((2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(uP,n), tensor_jump_b(vP,n))*ds(dirP)) \
+             - (2*G*inner(sym(grad(uP)), tensor_jump_b(vP,n)) * ds(dirP)) \
+             - (2*G*inner(sym(grad(vP)), tensor_jump_b(uP,n)) * ds(dirP)) \
+             - (l*div(uP)*inner(vP,n)*ds(dirP)) - (l*div(vP)*inner(uP,n)*ds(dirP))
+
+        SP = cP/dt * pP * qP * dx(poroel) \
+             + theta*( \
+             (Kval/G*inner(grad(pP),grad(qP))*dx(poroel)) \
+             + beta*pP*qP*dx(poroel) \
+             + (KvalCorr/G*eta*degP*degP/h_avg*inner(jump(pP,n),jump(qP,n))*dS(0)) \
+             - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
+             + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
+             - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
+             )
+             # + (KvalCorr/G*eta*degP*degP/h('+')*pP('+')*qP('+')*dS(interf)) \
+             # - (Kval/G*inner(grad(pP('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP('+')*dS(interf)) \
+
+        JSt = pP('+') * dot(vS('-'), n('-')) * dS(interf)
+        JS = qP('+') * dot(uS('-'), n('+')) * dS(interf)
+        JPt = -pP('-') * dot(vP('-'), n('-')) * dS(interf)
+        # JP: use Newmark extrap to approx \dot{d} in the eq for pP
+        JP = theta*newmarkGamma/(newmarkBeta*dt) * qP('+') * dot(uP('+'), n('+')) * dS(interf)
+
+        B1Pt = - alpha * pP * div(vP) * dx(poroel) \
+               + alpha * jump(vP,n) * avg(pP) * dS(0) \
+               + alpha * inner(vP,n) * pP * ds(dirP) \
+               + JPt
+
+        # NB In the STEADY case, the coupling pP->uP is one-directional
+        # B1P = 0
+        B1P = theta*newmarkGamma/(newmarkBeta*dt) * ( \
+              alpha * qP * div(uP) * dx(poroel) \
+              - alpha * jump(uP,n) * avg(qP) * dS(0) \
+              - alpha * inner(uP,n) * qP * ds(dirP) \
+              ) \
+              + JP
+
+        FuS = rhoS/dt * inner(uS_OLD,vS) * dx(stokes) \
+              - (1-theta)*( \
+              2.0 * mu * inner(sym(grad(uS_OLD)), sym(grad(vS))) * dx(stokes) \
+              + (mu*etaU*deg*deg/h_avg*inner(tensor_jump(uS_OLD,n),tensor_jump(vS,n))*dS(0)) \
+              - (2*mu*inner(avg(sym(grad(uS_OLD))), tensor_jump(vS,n))*dS(0)) - (2*mu*inner(avg(sym(grad(vS))), tensor_jump(uS_OLD,n))*dS(0)) \
+              + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS_OLD,n), tensor_jump_b(vS,n))*ds(dirS)) \
+              - (2*mu*inner(sym(grad(uS_OLD)), tensor_jump_b(vS,n))*ds(dirS)) \
+              - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS_OLD,n))*ds(dirS)) \
+              ) \
+              - (1-theta)*( \
+              -pS_OLD * div(vS) * dx(stokes) \
+              + jump(vS,n) * avg(pS_OLD) * dS(0) \
+              + inner(vS,n) * pS_OLD * ds(dirS) \
+              ) \
+              + theta * ( \
+              dot(fS, vS) * dx(stokes) \
+              + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS_ex,n),tensor_jump_b(vS,n))*ds(dirS)) \
+              - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS_ex,n))*ds(dirS)) \
+              + inner(gNeuSTop, vS) * ds(neuSTop) \
+              ) \
+              + (1-theta) * ( \
+              + dot(fS_OLD, vS) * dx(stokes) \
+              + (mu*etaU*deg*deg/h*inner(tensor_jump_b(uS_ex_OLD,n),tensor_jump_b(vS,n))*ds(dirS)) \
+              - (2*mu*inner(sym(grad(vS)), tensor_jump_b(uS_ex_OLD,n))*ds(dirS)) \
+              + inner(gNeuSTop_OLD, vS) * ds(neuSTop) \
+              )
+              #THIS SEEMS TO REPLACE JSt (and quite precisely, especially in terms of uS,pS,uP)#  + inner(gNeuS, vS('+')) * dS(interf)
+
+        FuP = rhoP/(newmarkBeta*dt*dt) * inner(uP_OLD,vP) * dx(poroel) \
+              + rhoP/(newmarkBeta*dt) * inner(zP_OLD,vP) * dx(poroel) \
+              + rhoP*(1.0-2*newmarkBeta)/(2*newmarkBeta) * inner(aP_OLD,vP) * dx(poroel) \
+              + dot(fP, vP) * dx(poroel) \
+              + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(dP_ex,n),tensor_jump_b(vP,n))*ds(dirP) \
+              - 2*G*inner(sym(grad(vP)), tensor_jump_b(dP_ex,n))*ds(dirP) \
+              - l*div(vP)*inner(dP_ex,n)*ds(dirP)
+
+        GqS = -(1-theta)*(
+              qS * div(uS_OLD) * dx(stokes) \
+              - jump(uS_OLD,n) * avg(qS) * dS(0) \
+              - inner(uS_ex_OLD,n) * qS * ds(dirS) \
+              + eta*h_avg_S/degP * inner(jump(pS_OLD,n),jump(qS,n)) * dS(0) \
+              ) \
+              + theta*( \
+              gS*qS * dx(stokes) \
+              - inner(uS_ex,n) * qS * ds(dirS) \
+              ) \
+              + (1-theta)*( \
+              gS_OLD*qS * dx(stokes) \
+              - inner(uS_ex_OLD,n) * qS * ds(dirS) \
+              )
+
+        GqP = cP/dt * pP_OLD * qP * dx(poroel) \
+              - (1-theta)*( \
+              (Kval/G*inner(grad(pP_OLD),grad(qP))*dx(poroel)) \
+              + beta*pP_OLD*qP*dx(poroel) \
+              + (KvalCorr/G*eta*degP*degP/h_avg*inner(jump(pP_OLD,n),jump(qP,n))*dS(0)) \
+              - (Kval/G*inner(avg(grad(pP_OLD)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP_OLD,n))*dS(0)) \
+              + (KvalCorr/G*eta*degP*degP/h*pP_OLD*qP*ds(dirP)) \
+              - (Kval/G*inner(grad(pP_OLD),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP_OLD*ds(dirP)) \
+              ) \
+              + theta*( \
+              gP*qP * dx(poroel) \
+              + (KvalCorr/G*eta*degP*degP/h*pP_ex*qP*ds(dirP)) \
+              - (Kval/G*pP_ex*inner(grad(qP),n)*ds(dirP)) \
+              ) \
+              + (1-theta)*( \
+              gP_OLD*qP * dx(poroel) \
+              + (KvalCorr/G*eta*degP*degP/h*pP_ex_OLD*qP*ds(dirP)) \
+              - (Kval/G*pP_ex_OLD*inner(grad(qP),n)*ds(dirP)) \
+              ) \
+              + theta*newmarkGamma/(newmarkBeta*dt) * ( \
+              alpha * qP * div(uP_OLD) * dx(poroel) \
+              - alpha * jump(uP_OLD,n) * avg(qP) * dS(0) \
+              - alpha * inner(uP_OLD,n) * qP * ds(dirP) \
+              ) \
+              + (theta*newmarkGamma/newmarkBeta - 1) * ( \
+              alpha * qP * div(zP_OLD) * dx(poroel) \
+              - alpha * jump(zP_OLD,n) * avg(qP) * dS(0) \
+              - alpha * inner(zP_OLD,n) * qP * ds(dirP) \
+              ) \
+              + theta*(newmarkGamma/(2*newmarkBeta) - 1)*dt * ( \
+              alpha * qP * div(aP_OLD) * dx(poroel) \
+              - alpha * jump(aP_OLD,n) * avg(qP) * dS(0) \
+              - alpha * inner(aP_OLD,n) * qP * ds(dirP) \
+              ) \
+              - theta*newmarkGamma/(newmarkBeta*dt) * ( \
+              + alpha * inner(dP_ex,n) * qP * ds(dirP) \
+              - alpha * inner(dP_ex_OLD,n) * qP * ds(dirP) \
+              ) #\
+              # - (1-theta)*( \
+              # + (KvalCorr/G*eta*degP*degP/h('+')*pP_OLD('+')*qP('+')*dS(interf)) \
+              # - (Kval/G*inner(grad(pP_OLD('+')),n('+'))*qP('+')*dS(interf)) - (Kval/G*inner(grad(qP('+')),n('+'))*pP_OLD('+')*dS(interf)) \
+              # ) \
+              # + theta*( \
+              # - (Kval/G*pP_ex*inner(grad(qP('+')),n('+'))*dS(interf)) \
+              # ) \
+              # + (1-theta)*( \
+              # - (Kval/G*pP_ex_OLD*inner(grad(qP('+')),n('+'))*dS(interf)) \
+              # ) \
+
         # ****** Assembly and solution of linear system ******** #
 
         rhs = [FuS, FuP, GqS, GqP]
@@ -544,11 +556,19 @@ for ii in range(1,7):
 
         # ****** Update OLD variables ******** #
 
-        aP_OLD2 = aP_OLD
-        aP_OLD = (uP-uP_OLD)/(newmarkBeta*dt*dt) \
-                 - zP_OLD/(newmarkBeta*dt) \
-                 + (2*newmarkBeta-1)/(2*newmarkBeta) * aP_OLD2
-        zP_OLD = zP_OLD + dt*(newmarkGamma*aP_OLD + (1-newmarkGamma)*aP_OLD2)
+        block_assign(to_aP_OLD2, to_aP_OLD)
+        tmp1, aP_OLD2, tmp2, tmp3 = block_split(to_aP_OLD2)
+
+        sol_diff = BlockFunction(Hh)
+        sol_diff = (sol-sol_OLD).copy(deepcopy=True)
+        block_assign(to_aP_OLD, sol_diff/(newmarkBeta_*dt*dt) \
+                 - to_zP_OLD/(newmarkBeta_*dt) \
+                 + (2*newmarkBeta_-1)/(2*newmarkBeta_) * to_aP_OLD2)
+        tmp1, aP_OLD, tmp2, tmp3 = block_split(to_aP_OLD)
+
+        block_assign(to_zP_OLD, to_zP_OLD + dt*(newmarkGamma_*to_aP_OLD + (1-newmarkGamma_)*to_aP_OLD2))
+        tmp1, zP_OLD, tmp2, tmp3 = block_split(to_zP_OLD)
+
         block_assign(sol_OLD, sol)
         uS_OLD, uP_OLD, pS_OLD, pP_OLD = block_split(sol_OLD)
 
