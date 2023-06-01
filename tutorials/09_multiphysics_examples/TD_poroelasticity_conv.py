@@ -28,7 +28,7 @@ uP: Poroelastic displacement in H^1(OmP)
 pP: Poroelastic pressure in L^2(OmP)
 """
 
-def postprocess(sol, conv_idx, time_idx, outputPath, outputFileBasename, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10):
+def postprocess(sol, conv_idx, time_idx, outputPath, outputFileBasename, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10, sol_diff = None, to_zP_OLD = None, to_aP_OLD = None, to_aP_OLD2 = None):
 
     uP_h, pP_h = block_split(sol)
     # assert isclose(uP_h.vector().norm("l2"), 2.713143)
@@ -50,20 +50,47 @@ def postprocess(sol, conv_idx, time_idx, outputPath, outputFileBasename, err_uP_
 
     # ****** Saving data ******** #
 
-    uP_h.rename("uP", "uP")
-    pP_h.rename("pP", "pP")
-
-    output = XDMFFile(outputPath+'/'+outputFileBasename+"_"+str(conv_idx)+"."+str(time_idx)+".xdmf")
-    output.parameters["rewrite_function_mesh"] = False
-    output.parameters["functions_share_mesh"] = True
-    output.write(uP_h, time)
-    output.write(pP_h, time)
-    output.close()
-
     with open(outputPath+'/'+outputFileBasename+'.csv', 'a', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',',
                                quotechar='|', quoting=csv.QUOTE_MINIMAL)
         csvwriter.writerow([1.0/N, time, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10])
+
+    output = XDMFFile(outputPath+'/'+outputFileBasename+"_"+str(conv_idx)+"."+str(time_idx)+".xdmf")
+    output.parameters["rewrite_function_mesh"] = False
+    output.parameters["functions_share_mesh"] = True
+
+    uP_h.rename("uP", "uP")
+    pP_h.rename("pP", "pP")
+    output.write(uP_h, time)
+    output.write(pP_h, time)
+
+    if (sol_diff is not None):
+        uP_diff, pP_diff = block_split(sol_diff)
+        uP_diff.rename("uP_diff", "uP_diff")
+        pP_diff.rename("pP_diff", "pP_diff")
+        output.write(uP_diff, time)
+        output.write(pP_diff, time)
+
+    if (to_zP_OLD is not None):
+        zP_OLD, tmpz = block_split(to_zP_OLD)
+        zP_OLD.rename("zPOLD", "zPOLD")
+        output.write(zP_OLD, time)
+
+    if (to_aP_OLD is not None):
+        aP_OLD, tmpz = block_split(to_aP_OLD)
+        aP_OLD.rename("aPOLD", "aPOLD")
+        output.write(aP_OLD, time)
+
+    if (to_aP_OLD2 is not None):
+        aP_OLD2, tmpz = block_split(to_aP_OLD2)
+        aP_OLD2.rename("aPOLD2", "aPOLD2")
+        output.write(aP_OLD2, time)
+
+    output.close()
+
+# ********************************* #
+# ************** MAIN ************* #
+# ********************************* #
 
 parameters["ghost_mode"] = "shared_facet"  # required by dS
 
@@ -92,9 +119,9 @@ beta = Constant(beta_)
 alpha_ = 1.+2*G_+2*l_
 alpha = Constant(alpha_)
 
-rhoP = 0
-cP = 0
-rhoS = 0
+rhoP = 1
+cP = 1
+rhoS = 1
 
 t0 = 0
 tmax = 1e-4
@@ -107,9 +134,11 @@ etaU = Constant(10)
 eta = Constant(10)
 
 dt = 1e-5
-newmarkBeta = Constant(0.25)
-newmarkGamma = Constant(0.5)
-theta = Constant(1.0)
+newmarkBeta_ = 0.25
+newmarkBeta = Constant(newmarkBeta_)
+newmarkGamma_ = 0.5
+newmarkGamma = Constant(newmarkGamma_)
+theta = Constant(0.5)
 
 # ******* Exact solution, initial condition, and sources ****** #
 
@@ -217,7 +246,7 @@ for ii in range(1,5):
         return  outer(u, n)/2 + outer(n, u)/2
 
     MPoroel().mark(subdomains, poroel)
-    Interface().mark(boundaries, interf)
+    Interface().mark(boundaries, dirP)
 
     Bot().mark(boundaries, dirP)
     PRight().mark(boundaries, dirP)
@@ -263,106 +292,15 @@ for ii in range(1,5):
 
     print("DoFs = ", Hh.dim(), " -- DoFs with unified Taylor-Hood = ", BDM1.dim() + P0.dim())
 
-
     # ******** Other parameters and BCs ************* #
-
-    # no BCs: imposed by DG
-
-    # ********  Define weak forms ********** #
 
     h = CellDiameter(mesh)
     h_avg = (2*h('+')*h('-'))/(h('+')+h('-'))
     n = FacetNormal(mesh)
     h_avg_S = (h('+')+h('-')-abs(h('+')-h('-')))/2
 
+    # no BCs: imposed by DG
 
-    AP = rhoP/(newmarkBeta*dt*dt) * inner(uP,vP) * dx(poroel) \
-         + (2*G*inner(sym(grad(uP)),sym(grad(vP)))*dx(poroel)) + (l*div(uP)*div(vP)*dx(poroel)) \
-         + ((2*l+5*G)*etaU*deg*deg/h_avg*inner(tensor_jump(uP,n),tensor_jump(vP,n))*dS(0)) \
-         - (2*G*inner(avg(sym(grad(uP))), tensor_jump(vP,n))*dS(0)) - (2*G*inner(avg(sym(grad(vP))), tensor_jump(uP,n))*dS(0)) \
-         - (l*avg(div(uP))*jump(vP,n)*dS(0)) - (l*avg(div(vP))*jump(uP,n)*dS(0)) \
-         + ((2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(uP,n), tensor_jump_b(vP,n))*ds(dirP)) \
-         - (2*G*inner(sym(grad(uP)), tensor_jump_b(vP,n)) * ds(dirP)) \
-         - (2*G*inner(sym(grad(vP)), tensor_jump_b(uP,n)) * ds(dirP)) \
-         - (l*div(uP)*inner(vP,n)*ds(dirP)) - (l*div(vP)*inner(uP,n)*ds(dirP))
-
-    SP = cP/dt * pP * qP * dx(poroel) \
-         + theta*( \
-         (Kval/G*inner(grad(pP),grad(qP))*dx(poroel)) \
-         + beta*pP*qP*dx(poroel) \
-         + (KvalCorr/G*eta*degP*degP/h_avg_S*inner(jump(pP,n),jump(qP,n))*dS(0)) \
-         - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
-         + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
-         - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
-         + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(interf)) \
-         - (Kval/G*inner(grad(pP),n)*qP*ds(interf)) - (Kval/G*inner(grad(qP),n)*pP*ds(interf)) \
-         )
-
-    B1Pt = - alpha * pP * div(vP) * dx(poroel) \
-           + alpha * jump(vP,n) * avg(pP) * dS(0) \
-           + alpha * inner(vP,n) * pP * ds(dirP)
-    
-    # NB In the STEADY case, the coupling pP->uP is one-directional
-    B1P = 0
-    # B1P = theta*newmarkGamma/(newmarkBeta*dt) * ( \
-    #       alpha * qP * div(uP) * dx(poroel) \
-    #       - alpha * jump(uP,n) * avg(qP) * dS(0) \
-    #       - alpha * inner(uP,n) * qP * ds(dirP) \
-    #       )
-
-    FuP = rhoP/(newmarkBeta*dt*dt) * inner(uP_OLD,vP) * dx(poroel) \
-          + rhoP/(newmarkBeta*dt) * inner(zP_OLD,vP) * dx(poroel) \
-          + rhoP*(1.0-2*newmarkBeta)/(2*newmarkBeta) * inner(aP_OLD,vP) * dx(poroel) \
-          + dot(fP, vP) * dx(poroel) \
-          + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(dP_ex,n),tensor_jump_b(vP,n))*ds(dirP) \
-          - 2*G*inner(sym(grad(vP)), tensor_jump_b(dP_ex,n))*ds(dirP) \
-          - l*div(vP)*inner(dP_ex,n)*ds(dirP) \
-          + inner(gNeuP, vP) * ds(interf)
-    
-    GqP = cP/dt * pP_OLD * qP * dx(poroel) \
-          - (1-theta)*( \
-          (Kval/G*inner(grad(pP_OLD),grad(qP))*dx(poroel)) \
-          + beta*pP_OLD*qP*dx(poroel) \
-          + (KvalCorr/G*eta*degP*degP/h_avg_S*inner(jump(pP_OLD,n),jump(qP,n))*dS(0)) \
-          - (Kval/G*inner(avg(grad(pP_OLD)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP_OLD,n))*dS(0)) \
-          + (KvalCorr/G*eta*degP*degP/h*pP_OLD*qP*ds(dirP)) \
-          - (Kval/G*inner(grad(pP_OLD),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP_OLD*ds(dirP)) \
-          + (KvalCorr/G*eta*degP*degP/h*pP_OLD*qP*ds(interf)) \
-          - (Kval/G*inner(grad(pP_OLD),n)*qP*ds(interf)) - (Kval/G*inner(grad(qP),n)*pP_OLD*ds(interf)) \
-          ) \
-          + theta*( \
-          gP*qP * dx(poroel) \
-          + (KvalCorr/G*eta*degP*degP/h*pP_ex*qP*ds(dirP)) \
-          - (Kval/G*pP_ex*inner(grad(qP),n)*ds(dirP)) \
-          + (KvalCorr/G*eta*degP*degP/h*pP_ex*qP*ds(interf)) \
-          - (Kval/G*pP_ex*inner(grad(qP),n)*ds(interf)) \
-          ) \
-          + (1-theta)*( \
-          gP_OLD*qP * dx(poroel) \
-          + (KvalCorr/G*eta*degP*degP/h*pP_ex_OLD*qP*ds(dirP)) \
-          + (KvalCorr/G*eta*degP*degP/h*pP_ex_OLD*qP*ds(interf)) \
-          - (Kval/G*pP_ex_OLD*inner(grad(qP),n)*ds(dirP)) \
-          - (Kval/G*pP_ex_OLD*inner(grad(qP),n)*ds(interf)) \
-          ) \
-          - theta*newmarkGamma/(newmarkBeta*dt) * ( \
-          alpha * qP * div(uP_OLD) * dx(poroel) \
-          + alpha * jump(uP_OLD,n) * avg(qP) * dS(0) \
-          + alpha * inner(uP_OLD,n) * qP * ds(dirP) \
-          + alpha * inner(uP_OLD,n) * qP * ds(interf) \
-          ) \
-          - (theta*newmarkGamma/newmarkBeta - 1) * ( \
-          alpha * qP * div(zP_OLD) * dx(poroel) \
-          + alpha * jump(zP_OLD,n) * avg(qP) * dS(0) \
-          + alpha * inner(zP_OLD,n) * qP * ds(dirP) \
-          + alpha * inner(zP_OLD,n) * qP * ds(interf) \
-          ) \
-          - theta*(newmarkGamma/(2*newmarkBeta) - 1)*dt * ( \
-          alpha * qP * div(aP_OLD) * dx(poroel) \
-          + alpha * jump(aP_OLD,n) * avg(qP) * dS(0) \
-          + alpha * inner(aP_OLD,n) * qP * ds(dirP) \
-          + alpha * inner(aP_OLD,n) * qP * ds(interf) \
-          )
-    
     # ****** Initial conditions ******** #
 
     uP_OLD = interpolate(dP_ex, Hh.sub(0))
@@ -385,12 +323,113 @@ for ii in range(1,5):
 
     postprocess(sol_OLD, ii, 0, outputPath, outputFileBasename+"_allTimes", err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10)
 
+    sol_diff = BlockFunction(Hh)
+    bis_to_zP_OLD = BlockFunction(Hh)
+    block_assign(bis_to_zP_OLD, to_zP_OLD)
+    bis_zP_OLD, tmpz = block_split(bis_to_zP_OLD)
+    bis_zP_OLD.rename("zPOLD", "zPOLD")
+    bis_to_aP_OLD = BlockFunction(Hh)
+    block_assign(bis_to_aP_OLD, to_aP_OLD)
+    bis_aP_OLD, tmpz = block_split(bis_to_aP_OLD)
+    bis_aP_OLD.rename("aPOLD", "aPOLD")
+    bis_to_aP_OLD2 = BlockFunction(Hh)
+    block_assign(bis_to_aP_OLD2, to_aP_OLD2)
+    bis_aP_OLD2, tmpz = block_split(bis_to_aP_OLD2)
+    bis_aP_OLD2.rename("aPOLD2", "aPOLD2")
+    output = XDMFFile(outputPath+'/'+outputFileBasename+"_zPaPaP2_"+str(ii)+".0.xdmf")
+    output.parameters["rewrite_function_mesh"] = False
+    output.parameters["functions_share_mesh"] = True
+    output.write(bis_zP_OLD, time)
+    output.write(bis_aP_OLD, time)
+    output.write(bis_aP_OLD2, time)
+    output.close()
+
     for time_idx in range(1, time_N):
 
         time = time + dt
         print("Time t = ", time)
 
-        # ****** Assembly and solution of linear system ******** #
+        # ****** (Re-)define weak forms ******** #
+
+        AP = rhoP/(newmarkBeta*dt*dt) * inner(uP,vP) * dx(poroel) \
+             + (2*G*inner(sym(grad(uP)),sym(grad(vP)))*dx(poroel)) + (l*div(uP)*div(vP)*dx(poroel)) \
+             + ((2*l+5*G)*etaU*deg*deg/h_avg*inner(tensor_jump(uP,n),tensor_jump(vP,n))*dS(0)) \
+             - (2*G*inner(avg(sym(grad(uP))), tensor_jump(vP,n))*dS(0)) - (2*G*inner(avg(sym(grad(vP))), tensor_jump(uP,n))*dS(0)) \
+             - (l*avg(div(uP))*jump(vP,n)*dS(0)) - (l*avg(div(vP))*jump(uP,n)*dS(0)) \
+             + ((2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(uP,n), tensor_jump_b(vP,n))*ds(dirP)) \
+             - (2*G*inner(sym(grad(uP)), tensor_jump_b(vP,n)) * ds(dirP)) \
+             - (2*G*inner(sym(grad(vP)), tensor_jump_b(uP,n)) * ds(dirP)) \
+             - (l*div(uP)*inner(vP,n)*ds(dirP)) - (l*div(vP)*inner(uP,n)*ds(dirP))
+
+        SP = cP/dt * pP * qP * dx(poroel) \
+             + theta*( \
+             (Kval/G*inner(grad(pP),grad(qP))*dx(poroel)) \
+             + beta*pP*qP*dx(poroel) \
+             + (KvalCorr/G*eta*degP*degP/h_avg*inner(jump(pP,n),jump(qP,n))*dS(0)) \
+             - (Kval/G*inner(avg(grad(pP)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP,n))*dS(0)) \
+             + (KvalCorr/G*eta*degP*degP/h*pP*qP*ds(dirP)) \
+             - (Kval/G*inner(grad(pP),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP*ds(dirP)) \
+             )
+
+        B1Pt = - alpha * pP * div(vP) * dx(poroel) \
+               + alpha * jump(vP,n) * avg(pP) * dS(0) \
+               + alpha * inner(vP,n) * pP * ds(dirP)
+
+        # NB In the STEADY case, the coupling pP->uP is one-directional
+        # B1P = 0
+        B1P = theta*newmarkGamma/(newmarkBeta*dt) * ( \
+              alpha * qP * div(uP) * dx(poroel) \
+              - alpha * jump(uP,n) * avg(qP) * dS(0) \
+              - alpha * inner(uP,n) * qP * ds(dirP) \
+              )
+
+        FuP = rhoP/(newmarkBeta*dt*dt) * inner(uP_OLD,vP) * dx(poroel) \
+              + rhoP/(newmarkBeta*dt) * inner(zP_OLD,vP) * dx(poroel) \
+              + rhoP*(1.0-2*newmarkBeta)/(2*newmarkBeta) * inner(aP_OLD,vP) * dx(poroel) \
+              + dot(fP, vP) * dx(poroel) \
+              + (2*l+5*G)*etaU*deg*deg/h*inner(tensor_jump_b(dP_ex,n),tensor_jump_b(vP,n))*ds(dirP) \
+              - 2*G*inner(sym(grad(vP)), tensor_jump_b(dP_ex,n))*ds(dirP) \
+              - l*div(vP)*inner(dP_ex,n)*ds(dirP) \
+              + inner(gNeuP, vP) * ds(interf)
+
+        GqP = cP/dt * pP_OLD * qP * dx(poroel) \
+              - (1-theta)*( \
+              (Kval/G*inner(grad(pP_OLD),grad(qP))*dx(poroel)) \
+              + beta*pP_OLD*qP*dx(poroel) \
+              + (KvalCorr/G*eta*degP*degP/h_avg*inner(jump(pP_OLD,n),jump(qP,n))*dS(0)) \
+              - (Kval/G*inner(avg(grad(pP_OLD)),jump(qP,n))*dS(0)) - (Kval/G*inner(avg(grad(qP)),jump(pP_OLD,n))*dS(0)) \
+              + (KvalCorr/G*eta*degP*degP/h*pP_OLD*qP*ds(dirP)) \
+              - (Kval/G*inner(grad(pP_OLD),n)*qP*ds(dirP)) - (Kval/G*inner(grad(qP),n)*pP_OLD*ds(dirP)) \
+              ) \
+              + theta*( \
+              gP*qP * dx(poroel) \
+              + (KvalCorr/G*eta*degP*degP/h*pP_ex*qP*ds(dirP)) \
+              - (Kval/G*pP_ex*inner(grad(qP),n)*ds(dirP)) \
+              ) \
+              + (1-theta)*( \
+              gP_OLD*qP * dx(poroel) \
+              + (KvalCorr/G*eta*degP*degP/h*pP_ex_OLD*qP*ds(dirP)) \
+              - (Kval/G*pP_ex_OLD*inner(grad(qP),n)*ds(dirP)) \
+              ) \
+              + theta*newmarkGamma/(newmarkBeta*dt) * ( \
+              alpha * qP * div(uP_OLD) * dx(poroel) \
+              - alpha * jump(uP_OLD,n) * avg(qP) * dS(0) \
+              - alpha * inner(uP_OLD,n) * qP * ds(dirP) \
+              ) \
+              + (theta*newmarkGamma/newmarkBeta - 1) * ( \
+              alpha * qP * div(zP_OLD) * dx(poroel) \
+              - alpha * jump(zP_OLD,n) * avg(qP) * dS(0) \
+              - alpha * inner(zP_OLD,n) * qP * ds(dirP) \
+              ) \
+              + theta*(newmarkGamma/(2*newmarkBeta) - 1)*dt * ( \
+              alpha * qP * div(aP_OLD) * dx(poroel) \
+              - alpha * jump(aP_OLD,n) * avg(qP) * dS(0) \
+              - alpha * inner(aP_OLD,n) * qP * ds(dirP) \
+              ) \
+              - theta*newmarkGamma/(newmarkBeta*dt) * ( \
+              + alpha * inner(dP_ex,n) * qP * ds(dirP) \
+              - alpha * inner(dP_ex_OLD,n) * qP * ds(dirP) \
+              )
 
         rhs = [FuP, GqP]
 
@@ -398,6 +437,8 @@ for ii in range(1,5):
         #        uP   pP
         lhs = [[ AP, B1Pt],
                [B1P,   SP]]
+
+        # ****** Assembly and solution of linear system ******** #
 
         AA = block_assemble(lhs)
         FF = block_assemble(rhs)
@@ -412,17 +453,25 @@ for ii in range(1,5):
 
         # ****** Update OLD variables ******** #
 
-        aP_OLD2 = aP_OLD
-        aP_OLD = (uP-uP_OLD)/(newmarkBeta*dt*dt) \
-                 - zP_OLD/(newmarkBeta*dt) \
-                 + (2*newmarkBeta-1)/(2*newmarkBeta) * aP_OLD2
-        zP_OLD = zP_OLD + dt*(newmarkGamma*aP_OLD + (1-newmarkGamma)*aP_OLD2)
+        block_assign(to_aP_OLD2, to_aP_OLD)
+        aP_OLD2, tmp = block_split(to_aP_OLD2)
+
+        sol_diff = BlockFunction(Hh)
+        sol_diff = (sol-sol_OLD).copy(deepcopy=True)
+        block_assign(to_aP_OLD, sol_diff/(newmarkBeta_*dt*dt) \
+                 - to_zP_OLD/(newmarkBeta_*dt) \
+                 + (2*newmarkBeta_-1)/(2*newmarkBeta_) * to_aP_OLD2)
+        aP_OLD, tmp = block_split(to_aP_OLD)
+
+        block_assign(to_zP_OLD, to_zP_OLD + dt*(newmarkGamma_*to_aP_OLD + (1-newmarkGamma_)*to_aP_OLD2))
+        zP_OLD, tmp = block_split(to_zP_OLD)
+
         block_assign(sol_OLD, sol)
-        uP_OLD, pP_OLD = block_split(sol_OLD)
+        uP_OLD, pP_OLD = (subf.copy(deepcopy=True) for subf in block_split(sol_OLD))
 
         # ****** postprocess ******** #
 
-        postprocess(sol_OLD, ii, time_idx, outputPath, outputFileBasename+"_allTimes", err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10)
+        postprocess(sol_OLD, ii, time_idx, outputPath, outputFileBasename+"_allTimes", err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10, sol_diff, to_zP_OLD, to_aP_OLD, to_aP_OLD2)
 
     # Re-exporting only last time in different convergence file.
     postprocess(sol_OLD, ii, time_idx, outputPath, outputFileBasename, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10)
