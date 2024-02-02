@@ -39,7 +39,7 @@ uS.nS = (K/G)grad(pP).nP
 
 """
 
-def postprocess(sol, conv_idx, time_idx, outputPath, outputFileBasename, err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10):
+def postprocess(sol, conv_idx, time_idx, outputPath, outputFileBasename, err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10, err_energy_2, h_avg, h_avg_S):
 
     uS_h, uP_h, pS_h, pP_h = block_split(sol)
     # assert isclose(uS_h.vector().norm("l2"), 73.54915)
@@ -57,16 +57,36 @@ def postprocess(sol, conv_idx, time_idx, outputPath, outputFileBasename, err_uS_
     form_err_uS_H10 = inner(sym(grad(uS_h)) - symgrad_uS_ex, sym(grad(uS_h)) - symgrad_uS_ex) * dx(stokes)
     form_err_pS_L2 = (pS_h - pS_ex)*(pS_h - pS_ex) * dx(stokes)
     form_err_uP_L2 = inner(uP_h - dP_ex, uP_h - dP_ex) * dx(poroel)
-    form_err_uP_H10 = inner(sym(grad(uP_h)) - symgrad_dP_ex, sym(grad(uP_h)) - symgrad_dP_ex) * dx(poroel)
+    form_err_uP_H10 = inner(sym(grad(uP_h)) - symgrad_dP_ex, sym(grad(uP_h)) - symgrad_dP_ex) * dx(poroel) + (div(uP_h) - div_dP_ex)*(div(uP_h) - div_dP_ex) * dx(poroel)
     form_err_pP_L2 = (pP_h - pP_ex)*(pP_h - pP_ex) * dx(poroel)
     form_err_pP_H10 = inner(grad(pP_h) - grad_pP_ex, grad(pP_h) - grad_pP_ex) * dx(poroel)
-    err_uS_L2 = max(err_uS_L2, sqrt(assemble(form_err_uS_L2)))
-    err_uS_H10 = max(err_uS_H10, sqrt(assemble(form_err_uS_H10)))
-    err_pS_L2 = max(err_pS_L2, sqrt(assemble(form_err_pS_L2)))
-    err_uP_L2 = max(err_uP_L2, sqrt(assemble(form_err_uP_L2)))
-    err_uP_H10 = max(err_uP_H10, sqrt(assemble(form_err_uP_H10)))
-    err_pP_L2 = max(err_pP_L2, sqrt(assemble(form_err_pP_L2)))
-    err_pP_H10 = max(err_pP_H10, sqrt(assemble(form_err_pP_H10)))
+    form_err_jumps = (
+        KvalCorr/G*eta*degP*degP/h_avg * inner(jump(pP_h - pP_ex, n), jump(pP_h - pP_ex, n)) * dS(0)
+        + (2*l+5*G)*etaU*deg*deg/h_avg * inner(tensor_jump(uP_h - dP_ex, n), tensor_jump(uP_h - dP_ex, n)) * dS(0)
+        + mu*etaU*deg*deg/h_avg * inner(tensor_jump(uS_h - uS_ex, n), tensor_jump(uS_h - uS_ex, n)) * dS(0)
+        + eta*h_avg_S/degP * inner(jump(pS_h - pS_ex, n), jump(pS_h - pS_ex, n)) * dS(0)
+        )
+
+    # temporary assembly at current time
+    ass_2_err_uS_L2 = assemble(form_err_uS_L2)
+    ass_2_err_uS_H10 = assemble(form_err_uS_H10)
+    ass_2_err_pS_L2 = assemble(form_err_pS_L2)
+    ass_2_err_uP_L2 = assemble(form_err_uP_L2)
+    ass_2_err_uP_H10 = assemble(form_err_uP_H10)
+    ass_2_err_pP_L2 = assemble(form_err_pP_L2)
+    ass_2_err_pP_H10 = assemble(form_err_pP_H10)
+
+    err_energy_2 = err_energy_2 + ass_2_err_pP_H10 + ass_2_err_pP_L2 + ass_2_err_uS_H10 + ass_2_err_pS_L2 + assemble(form_err_jumps)
+
+    # update of the L-inf norm
+    err_uS_L2 = max(err_uS_L2, sqrt(ass_2_err_uS_L2))
+    err_uS_H10 = max(err_uS_H10, sqrt(ass_2_err_uS_H10))
+    err_pS_L2 = max(err_pS_L2, sqrt(ass_2_err_pS_L2))
+    err_uP_L2 = max(err_uP_L2, sqrt(ass_2_err_uP_L2))
+    err_uP_H10 = max(err_uP_H10, sqrt(ass_2_err_uP_H10))
+    err_pP_L2 = max(err_pP_L2, sqrt(ass_2_err_pP_L2))
+    err_pP_H10 = max(err_pP_H10, sqrt(ass_2_err_pP_H10))
+
     print("Errors: Stokes : uL2: ", err_uS_L2, "  uH10: ", err_uS_H10, "  pL2: ", err_pS_L2)
     print("        poroel : uL2: ", err_uP_L2, "  uH10: ", err_uP_H10, "  pL2: ", err_pP_L2, "  pH10: ", err_pP_H10)
 
@@ -89,7 +109,7 @@ def postprocess(sol, conv_idx, time_idx, outputPath, outputFileBasename, err_uS_
     with open(outputPath+'/'+outputFileBasename+'.csv', 'a', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',',
                                quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        csvwriter.writerow([1.0/N, time, err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10])
+        csvwriter.writerow([1.0/N, time, err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10, sqrt(err_energy_2)])
 
 # ********************************* #
 # ************** MAIN ************* #
@@ -191,6 +211,8 @@ gNeuP_OLD = gNeuP
 symgrad_dP_ex = Expression((("pi*(sin(pi*x[0])*cos(pi*x[1]))","pi*(cos(pi*x[0])*sin(pi*x[1]))"),\
                             ("pi*(cos(pi*x[0])*sin(pi*x[1]))","pi*(sin(pi*x[0])*cos(pi*x[1]))")), degree=exactdeg, A=A)
 
+div_dP_ex = Expression("2*pi*sin(pi*x[0])*cos(pi*x[1])", degree=exactdeg)
+
 grad_pP_ex = Expression(("pi*pi*(cos(pi*x[0])*cos(pi*x[1])-sin(pi*x[0])*sin(pi*x[1]))",\
                          "pi*pi*(-sin(pi*x[0])*sin(pi*x[1])+cos(pi*x[0])*cos(pi*x[1]))"), degree=exactdeg, A=A)
 
@@ -211,7 +233,7 @@ neuSTop = 20
 with open(outputPath+'/'+outputFileBasename+'.csv', 'w', newline='') as csvfile:
     csvwriter = csv.writer(csvfile, delimiter=',',
                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
-    csvwriter.writerow(["h", "time", "err_uS_L2", "err_uS_H10", "err_pS_L2", "err_uP_L2", "err_uP_H10", "err_pP_L2", "err_pP_H10"])
+    csvwriter.writerow(["h", "time", "err_uS_L2", "err_uS_H10", "err_pS_L2", "err_uP_L2", "err_uP_H10", "err_pP_L2", "err_pP_H10", "err_energy"])
 
 for ii in range(1,7):
 
@@ -356,11 +378,12 @@ for ii in range(1,7):
     err_uP_H10 = 0
     err_pP_L2 = 0
     err_pP_H10 = 0
+    err_energy_2 = 0
 
     time_N = ceil((tmax-t0)/dt)
     time = 0
 
-    postprocess(sol_OLD, ii, 0, outputPath, outputFileBasename+"_allTimes", err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10)
+    postprocess(sol_OLD, ii, 0, outputPath, outputFileBasename+"_allTimes", err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10, err_energy_2, h_avg, h_avg_S)
 
     for time_idx in range(1, time_N):
 
@@ -574,7 +597,7 @@ for ii in range(1,7):
 
         # ****** postprocess ******** #
 
-        postprocess(sol_OLD, ii, time_idx, outputPath, outputFileBasename+"_allTimes", err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10)
+        postprocess(sol_OLD, ii, time_idx, outputPath, outputFileBasename+"_allTimes", err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10, err_energy_2, h_avg, h_avg_S)
 
     # Re-exporting only last time in different convergence file.
-    postprocess(sol_OLD, ii, time_idx, outputPath, outputFileBasename, err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10)
+    postprocess(sol_OLD, ii, time_idx, outputPath, outputFileBasename, err_uS_L2, err_uS_H10, err_pS_L2, err_uP_L2, err_uP_H10, err_pP_L2, err_pP_H10, err_energy_2, h_avg, h_avg_S)
