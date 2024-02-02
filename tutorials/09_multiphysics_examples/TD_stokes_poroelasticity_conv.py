@@ -120,7 +120,7 @@ parameters["ghost_mode"] = "shared_facet"  # required by dS
 # ********* I/O parameters  ******* #
 
 outputPath = "output"
-outputFileBasename = "TD_stokes_poroelasticity_conv"
+outputFileBasename = "TD_stokes_poroelasticity_conv_P2"
 
 if not os.path.exists(outputPath):
     os.makedirs(outputPath)
@@ -151,8 +151,8 @@ tmax = 1e-4
 
 # ********* Numerical method constants  ******* #
 
-deg = 1
-degP = 1
+deg = 2
+degP = 2
 etaU = Constant(10)
 eta = Constant(10)
 
@@ -161,7 +161,7 @@ newmarkBeta_ = 0.25
 newmarkBeta = Constant(newmarkBeta_)
 newmarkGamma_ = 0.5
 newmarkGamma = Constant(newmarkGamma_)
-theta = Constant(1.0)
+theta = Constant(0.5)
 
 # ******* Exact solution, initial condition, and sources ****** #
 
